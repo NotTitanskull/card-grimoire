@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Converted the project scaffold from TypeScript to JavaScript.
 
 ### Added
+- Documented the initial data model and ownership rules.
 - Integrated Quasar components and Material Icons.
 - Configured SCSS support and Quasar theme variables.
 - Initial Vue and Vite project scaffold.
