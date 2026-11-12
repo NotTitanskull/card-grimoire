@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Replaced starter documentation with project setup instructions.
+- Converted the project scaffold from TypeScript to JavaScript.
+
 ### Added
 
 - Initial Vue and Vite project scaffold.
