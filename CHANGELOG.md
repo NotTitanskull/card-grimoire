@@ -8,11 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-
+- Restored the original blue primary color and light application background.
 - Replaced starter documentation with project setup instructions.
 - Converted the project scaffold from TypeScript to JavaScript.
 
 ### Added
+- Added a shared application layout with a header, content area, and footer.
+- Added responsive navigation with desktop tabs and mobile bottom tabs.
 - Added routes and initial views for Collection, Trade, and Binders.
 - Documented the initial data model and ownership rules.
 - Integrated Quasar components and Material Icons.

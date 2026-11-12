@@ -1,15 +1,9 @@
+<script setup>
+import AppLayout from './components/layout/AppLayout.vue'
+</script>
+
 <template>
-  <main class="q-pa-lg">
-    <RouterView />
-  </main>
+  <AppLayout>
+    <RouterView/>
+  </AppLayout>
 </template>
-
-<style scoped lang="scss">
-.setup-page {
-  padding: 2rem;
-
-  h1 {
-    color: $primary;
-  }
-}
-</style>
