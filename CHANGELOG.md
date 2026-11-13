@@ -8,11 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Lazy-loaded route views and separated Firestore initialization from authentication.
+- Refined page headings and authentication form spacing.
 - Restored the original blue primary color and light application background.
 - Replaced starter documentation with project setup instructions.
 - Converted the project scaffold from TypeScript to JavaScript.
 
 ### Added
+- Added Firebase email/password registration, sign-in, and sign-out.
+- Added shared authentication state with Pinia and protected application routes.
+- Added Firebase configuration examples and initial deny-all Firestore rules.
 - Added a shared application layout with a header, content area, and footer.
 - Added responsive navigation with desktop tabs and mobile bottom tabs.
 - Added routes and initial views for Collection, Trade, and Binders.

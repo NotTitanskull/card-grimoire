@@ -1,9 +1,15 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowJs": true,
+    "noEmit": true,
+    "types": ["vite/client"],
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*.js", "src/**/*.vue"]
+  "include": ["src/**/*.js", "src/**/*.vue", "src/**/*.d.ts"],
+  "exclude": ["node_modules", "dist"]
 }

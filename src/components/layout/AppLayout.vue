@@ -1,5 +1,35 @@
 <script setup>
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth.js'
+import { logoutUser } from '@/services/auth.js'
 import AppNavigation from './AppNavigation.vue'
+
+const router = useRouter()
+const authStore = useAuthStore()
+
+const signingOut = ref(false)
+const logoutError = ref('')
+
+/**
+ * Signs out through Firebase and returns to the authentication screen.
+ * @returns {Promise<void>}
+ */
+async function handleLogout() {
+  if (signingOut.value) return
+
+  signingOut.value = true
+  logoutError.value = ''
+
+  try {
+    await logoutUser()
+    await router.replace({ name: 'auth' })
+  } catch {
+    logoutError.value = 'Unable to complete sign-out. Please try again.'
+  } finally {
+    signingOut.value = false
+  }
+}
 </script>
 
 <template>
@@ -9,17 +39,42 @@ import AppNavigation from './AppNavigation.vue'
         <RouterLink class="app-brand" :to="{ name: 'collection' }">
           Card Grimoire
         </RouterLink>
-        <AppNavigation class="desktop-navigation" />
+
+        <AppNavigation
+            v-if="authStore.isAuthenticated"
+            class="desktop-navigation"
+        />
+
+        <q-btn
+            v-if="authStore.isAuthenticated"
+            flat
+            no-caps
+            color="primary"
+            label="Sign out"
+            :loading="signingOut"
+            :disable="signingOut"
+            @click="handleLogout"
+        />
       </div>
     </header>
 
     <main class="page-container app-main">
-      <slot />
+      <q-banner
+          v-if="logoutError"
+          class="bg-red-1 text-negative q-mb-md rounded-borders"
+          role="alert"
+      >
+        {{ logoutError }}
+      </q-banner>
+      <slot/>
     </main>
 
     <footer class="page-container app-footer">
       <small>Card Grimoire</small>
-      <AppNavigation class="mobile-navigation" />
+      <AppNavigation
+          v-if="authStore.isAuthenticated"
+          class="mobile-navigation"
+      />
     </footer>
   </div>
 </template>
@@ -55,6 +110,8 @@ import AppNavigation from './AppNavigation.vue'
     justify-content: space-between;
     min-height: 4.5rem;
     gap: 1rem;
+    flex-wrap: wrap;
+    padding-block: 0.5rem;
   }
 }
 
@@ -96,8 +153,8 @@ import AppNavigation from './AppNavigation.vue'
 @media (min-width: 768px) {
   .desktop-navigation {
     display: block;
+    margin-left: auto;
   }
-
   .mobile-navigation {
     display: none;
   }
