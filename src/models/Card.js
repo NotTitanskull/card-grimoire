@@ -16,6 +16,7 @@ export class Card {
      * @param {{normal?: string}} [printing.image_uris] Main card image URLs.
      * @param {Array<{image_uris?: {normal?: string}}>} [printing.card_faces]
      *   Individual faces for cards with separate face images.
+     * @param {string[]} printing.finishes Available finishes for this printing.
      * @throws {TypeError} If printing data or a required field is invalid.
      */
     constructor(printing) {
@@ -40,6 +41,16 @@ export class Card {
             }
         }
 
+        const supportedFinishes = ['nonfoil', 'foil', 'etched']
+
+        if (
+            !Array.isArray(printing.finishes) ||
+            printing.finishes.length === 0 ||
+            !printing.finishes.every((finish) => supportedFinishes.includes(finish))
+        ) {
+            throw new TypeError('Card printing requires valid available finishes.')
+        }
+
         this.scryfallId = printing.id
         this.name = printing.name
         this.setCode = printing.set.toUpperCase()
@@ -51,5 +62,6 @@ export class Card {
             printing.image_uris?.normal ??
             printing.card_faces?.[0]?.image_uris?.normal ??
             ''
+        this.finishes = [...printing.finishes]
     }
 }

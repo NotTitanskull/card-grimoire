@@ -37,6 +37,7 @@ Fields:
 - collectorNumber: string, because numbers may include letters.
 - rarity: printing rarity.
 - imageUrl: card image, with a fallback for double-faced cards.
+- finishes: nonempty list of available finishes for the printing: nonfoil, foil, or etched.
 
 Card printing information is embedded in collection entries,
 wishlist entries, and trade snapshots.
