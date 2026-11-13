@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added Scryfall card search through a dedicated API module.
+- Added an Add card dialog with search results, skeleton loaders, and error feedback.
+- Added cancellation of pending searches when closing the dialog.
 - Added a CollectionEntry model with ownership details and binder allocation validation.
 - Added a Card model with required-field validation and double-faced image support.
 - Added Firebase email/password registration, sign-in, and sign-out.
