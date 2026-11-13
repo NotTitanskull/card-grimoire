@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Converted the project scaffold from TypeScript to JavaScript.
 
 ### Added
+- Added a Card model with required-field validation and double-faced image support.
 - Added Firebase email/password registration, sign-in, and sign-out.
 - Added shared authentication state with Pinia and protected application routes.
 - Added Firebase configuration examples and initial deny-all Firestore rules.
