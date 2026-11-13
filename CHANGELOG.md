@@ -25,3 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integrated Quasar components and Material Icons.
 - Configured SCSS support and Quasar theme variables.
 - Initial Vue and Vite project scaffold.
+
+### Removed
+
+- Removed unused Vue starter components and demo icons.
