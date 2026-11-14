@@ -126,6 +126,7 @@ Fields:
 - createdAt: date and time the record was saved.
 - notes: optional text.
 - currency: currency code; initially USD.
+- oracleId: shared card identity across printings, or null when unavailable.
 
 Each snapshot includes:
 

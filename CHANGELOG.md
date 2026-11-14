@@ -18,8 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added Oracle IDs and an API function for retrieving a card's paper printings.
 - Added shared Prettier configuration for consistent code formatting.
-
 - Added Scryfall card search through a dedicated API module.
 - Added an Add card dialog with search results, skeleton loaders, and error feedback.
 - Added cancellation of pending searches when closing the dialog.
