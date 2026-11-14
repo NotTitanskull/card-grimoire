@@ -1,8 +1,8 @@
 import {
-    createUserWithEmailAndPassword,
-    signInWithEmailAndPassword,
-    signOut,
-    onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
 } from 'firebase/auth'
 
 import { auth } from './firebase'
@@ -14,7 +14,7 @@ import { auth } from './firebase'
  * @returns {Promise<import('firebase/auth').UserCredential>}
  */
 export function registerUser(email, password) {
-    return createUserWithEmailAndPassword(auth, email.trim(), password)
+  return createUserWithEmailAndPassword(auth, email.trim(), password)
 }
 
 /**
@@ -24,7 +24,7 @@ export function registerUser(email, password) {
  * @returns {Promise<import('firebase/auth').UserCredential>}
  */
 export function loginUser(email, password) {
-    return signInWithEmailAndPassword(auth, email.trim(), password)
+  return signInWithEmailAndPassword(auth, email.trim(), password)
 }
 
 /**
@@ -32,7 +32,7 @@ export function loginUser(email, password) {
  * @returns {Promise<void>}
  */
 export function logoutUser() {
-    return signOut(auth)
+  return signOut(auth)
 }
 
 /**
@@ -41,5 +41,5 @@ export function logoutUser() {
  * @returns {() => void} Function that stops listening.
  */
 export function observeAuthState(callback) {
-    return onAuthStateChanged(auth, callback)
+  return onAuthStateChanged(auth, callback)
 }

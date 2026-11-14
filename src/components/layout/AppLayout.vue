@@ -36,45 +36,37 @@ async function handleLogout() {
   <div class="app-layout">
     <header class="app-header">
       <div class="page-container app-header__content">
-        <RouterLink class="app-brand" :to="{ name: 'collection' }">
-          Card Grimoire
-        </RouterLink>
+        <RouterLink class="app-brand" :to="{ name: 'collection' }"> Card Grimoire </RouterLink>
 
-        <AppNavigation
-            v-if="authStore.isAuthenticated"
-            class="desktop-navigation"
-        />
+        <AppNavigation v-if="authStore.isAuthenticated" class="desktop-navigation" />
 
         <q-btn
-            v-if="authStore.isAuthenticated"
-            flat
-            no-caps
-            color="primary"
-            label="Sign out"
-            :loading="signingOut"
-            :disable="signingOut"
-            @click="handleLogout"
+          v-if="authStore.isAuthenticated"
+          flat
+          no-caps
+          color="primary"
+          label="Sign out"
+          :loading="signingOut"
+          :disable="signingOut"
+          @click="handleLogout"
         />
       </div>
     </header>
 
     <main class="page-container app-main">
       <q-banner
-          v-if="logoutError"
-          class="bg-red-1 text-negative q-mb-md rounded-borders"
-          role="alert"
+        v-if="logoutError"
+        class="bg-red-1 text-negative q-mb-md rounded-borders"
+        role="alert"
       >
         {{ logoutError }}
       </q-banner>
-      <slot/>
+      <slot />
     </main>
 
     <footer class="page-container app-footer">
       <small>Card Grimoire</small>
-      <AppNavigation
-          v-if="authStore.isAuthenticated"
-          class="mobile-navigation"
-      />
+      <AppNavigation v-if="authStore.isAuthenticated" class="mobile-navigation" />
     </footer>
   </div>
 </template>
@@ -159,5 +151,4 @@ async function handleLogout() {
     display: none;
   }
 }
-
 </style>

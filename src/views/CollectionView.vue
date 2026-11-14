@@ -72,39 +72,21 @@ onUnmounted(cancelSearch)
 
 <template>
   <section>
-    <h1 class="text-h4 text-weight-bold q-mt-none q-mb-sm">
-      My Collection
-    </h1>
+    <h1 class="text-h4 text-weight-bold q-mt-none q-mb-sm">My Collection</h1>
 
     <p>Browse and manage every card in your collection.</p>
 
-    <q-btn
-        color="primary"
-        icon="add"
-        label="Add card"
-        no-caps
-        @click="dialogOpen = true"
-    />
+    <q-btn color="primary" icon="add" label="Add card" no-caps @click="dialogOpen = true" />
 
-    <AddCardDialog
-        v-model="dialogOpen"
-        :loading="loading"
-        @search="handleSearch"
-    >
+    <AddCardDialog v-model="dialogOpen" :loading="loading" @search="handleSearch">
       <div v-if="loading" role="status" aria-label="Searching cards">
-        <q-skeleton
-            v-for="item in 3"
-            :key="item"
-            type="rect"
-            height="64px"
-            class="q-mb-sm"
-        />
+        <q-skeleton v-for="item in 3" :key="item" type="rect" height="64px" class="q-mb-sm" />
       </div>
 
       <q-banner
-          v-else-if="errorMessage"
-          class="bg-red-1 text-negative rounded-borders"
-          role="alert"
+        v-else-if="errorMessage"
+        class="bg-red-1 text-negative rounded-borders"
+        role="alert"
       >
         {{ errorMessage }}
       </q-banner>
@@ -112,9 +94,7 @@ onUnmounted(cancelSearch)
       <template v-else-if="searched">
         <p role="status">
           {{ cards.length }} results displayed.
-          <span v-if="hasMore">
-            More matches are available. Refine your search for now.
-          </span>
+          <span v-if="hasMore"> More matches are available. Refine your search for now. </span>
         </p>
 
         <q-list v-if="cards.length" bordered separator>

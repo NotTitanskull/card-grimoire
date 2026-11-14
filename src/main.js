@@ -9,9 +9,9 @@ import 'quasar/src/css/index.sass'
 import App from './App.vue'
 
 createApp(App)
-    .use(Quasar, {
-        plugins: {},
-    })
-    .use(createPinia())
-    .use(router)
-    .mount('#app')
+  .use(Quasar, {
+    plugins: {},
+  })
+  .use(createPinia())
+  .use(router)
+  .mount('#app')
