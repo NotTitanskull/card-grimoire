@@ -6,6 +6,14 @@ defineProps({
     type: Boolean,
     default: false,
   },
+  saving: {
+    type: Boolean,
+    default: false,
+  },
+  showSearch: {
+    type: Boolean,
+    default: true,
+  },
   loading: {
     type: Boolean,
     default: false,
@@ -18,6 +26,7 @@ const emit = defineEmits(['update:modelValue', 'search'])
 <template>
   <q-dialog
     :model-value="modelValue"
+    :persistent="saving"
     aria-labelledby="add-card-title"
     @update:model-value="emit('update:modelValue', $event)"
   >
@@ -27,12 +36,20 @@ const emit = defineEmits(['update:modelValue', 'search'])
 
         <q-space />
 
-        <q-btn v-close-popup flat round dense icon="close" aria-label="Close add card dialog" />
+        <q-btn
+          v-close-popup
+          :disable="saving"
+          flat
+          round
+          dense
+          icon="close"
+          aria-label="Close add card dialog"
+        />
       </q-card-section>
 
       <q-separator />
 
-      <q-card-section>
+      <q-card-section v-if="showSearch">
         <CardSearch :loading="loading" @search="emit('search', $event)" />
       </q-card-section>
 

@@ -1,9 +1,94 @@
 rules_version = '2';
 
 service cloud.firestore {
-    match /databases/{database}/documents {
-        match /{document=**} {
-            allow read, write: if false;
-        }
+  match /databases/{database}/documents {
+    function isOwner(userId) {
+      return request.auth != null
+        && request.auth.uid == userId;
     }
+
+    function isNonemptyString(value) {
+      return value is string && value.matches('.*\\S.*');
+    }
+
+    function isSafeNonnegativeInteger(value) {
+      return value is int
+        && value >= 0
+        && value <= 9007199254740991;
+    }
+
+    function isValidCard(card) {
+      let fields = [
+        'scryfallId', 'oracleId', 'name', 'setCode', 'setName',
+        'collectorNumber', 'typeLine', 'rarity', 'imageUrl', 'finishes'
+      ];
+
+      return card is map
+        && card.keys().hasAll(fields)
+        && card.keys().hasOnly(fields)
+        && isNonemptyString(card.scryfallId)
+        && (card.oracleId == null || isNonemptyString(card.oracleId))
+        && isNonemptyString(card.name)
+        && isNonemptyString(card.setCode)
+        && isNonemptyString(card.setName)
+        && isNonemptyString(card.collectorNumber)
+        && card.typeLine is string
+        && card.rarity is string
+        && card.imageUrl is string
+        && card.finishes is list
+        && card.finishes.size() >= 1
+        && card.finishes.size() <= 3
+        && card.finishes.hasOnly(['nonfoil', 'foil', 'etched']);
+    }
+
+    function isValidNewEntry(data) {
+      let fields = [
+        'card', 'quantity', 'condition', 'finish',
+        'purchasePriceMinor', 'currency', 'favorite',
+        'availableForTrade', 'binderQuantities',
+        'createdAt', 'updatedAt'
+      ];
+
+      return data.keys().hasAll(fields)
+        && data.keys().hasOnly(fields)
+        && isValidCard(data.card)
+        && isSafeNonnegativeInteger(data.quantity)
+        && data.quantity > 0
+        && data.condition in [
+          'Near Mint',
+          'Lightly Played',
+          'Moderately Played',
+          'Heavily Played',
+          'Damaged'
+        ]
+        && data.finish in ['nonfoil', 'foil', 'etched']
+        && data.finish in data.card.finishes
+        && (
+          data.purchasePriceMinor == null
+          || isSafeNonnegativeInteger(data.purchasePriceMinor)
+        )
+        && data.currency == 'USD'
+        && data.favorite is bool
+        && data.availableForTrade is bool
+        && data.binderQuantities is map
+        && data.binderQuantities.size() == 0
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    match /users/{userId}/collectionEntries/{entryId} {
+      allow read: if isOwner(userId);
+
+      allow create: if isOwner(userId)
+        && isValidNewEntry(request.resource.data);
+
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
 }

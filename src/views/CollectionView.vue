@@ -1,16 +1,126 @@
 <script setup>
 import { onUnmounted, ref, watch } from 'vue'
+import { useAuthStore } from '../stores/auth.js'
+import { createCollectionEntry } from '../services/collection.js'
 import AddCardDialog from '../components/cards/AddCardDialog.vue'
-import { searchCards } from '../services/scryfall'
+import { getCardPrintings, searchCards } from '../services/scryfall'
+import CardPrintingPicker from '../components/cards/CardPrintingPicker.vue'
+import CollectionEntryForm from '../components/cards/CollectionEntryForm.vue'
 
+const authStore = useAuthStore()
+const saving = ref(false)
+const saveError = ref('')
+const successMessage = ref('')
 const dialogOpen = ref(false)
 const loading = ref(false)
 const cards = ref([])
 const errorMessage = ref('')
 const searched = ref(false)
 const hasMore = ref(false)
+const selectedCard = ref(null)
+const printings = ref([])
+const printingsPage = ref(0)
+const printingsHaveMore = ref(false)
+const selectedPrinting = ref(null)
 
 let activeRequest = null
+
+/**
+ * Saves validated ownership details for the signed-in user.
+ * @param {import('../models/CollectionEntry.js').CollectionEntry} entry Entry to save.
+ * @returns {Promise<void>}
+ */
+async function saveEntry(entry) {
+  if (saving.value) return
+
+  saveError.value = ''
+  successMessage.value = ''
+  const userId = authStore.user?.uid
+
+  if (!userId) {
+    saveError.value = 'Please sign in again before saving your collection.'
+    return
+  }
+
+  saving.value = true
+
+  try {
+    await createCollectionEntry(userId, entry)
+    successMessage.value = `${entry.card.name} was added to your collection.`
+    dialogOpen.value = false
+  } catch (error) {
+    saveError.value =
+      error.code === 'permission-denied'
+        ? 'Saving was denied. Check that you are signed in and the Firestore rules are published.'
+        : 'Unable to save this entry. Your details are still here; please try again.'
+  } finally {
+    saving.value = false
+  }
+}
+
+watch(selectedPrinting, () => {
+  saveError.value = ''
+})
+
+/**
+ * Loads the next page of printings for the selected card.
+ * @returns {Promise<void>}
+ */
+async function loadPrintings() {
+  if (loading.value || !selectedCard.value?.oracleId) return
+
+  const controller = new AbortController()
+  const nextPage = printingsPage.value + 1
+  activeRequest = controller
+
+  loading.value = true
+  errorMessage.value = ''
+
+  try {
+    const result = await getCardPrintings(selectedCard.value.oracleId, {
+      page: nextPage,
+      signal: controller.signal,
+    })
+
+    if (activeRequest !== controller) return
+
+    printings.value = [...printings.value, ...result.cards]
+    printingsPage.value = nextPage
+    printingsHaveMore.value = result.hasMore
+  } catch (error) {
+    if (activeRequest !== controller || error.name === 'AbortError') return
+
+    errorMessage.value = 'Unable to load printings. Please try again.'
+  } finally {
+    if (activeRequest === controller) {
+      loading.value = false
+      activeRequest = null
+    }
+  }
+}
+
+/**
+ * Opens the available printings for a search result.
+ * @param {import('../models/Card').Card} card Selected search result.
+ * @returns {Promise<void>}
+ */
+async function selectCard(card) {
+  cancelSearch()
+
+  selectedCard.value = card
+  selectedPrinting.value = null
+  printings.value = []
+  printingsPage.value = 0
+  printingsHaveMore.value = false
+  errorMessage.value = ''
+
+  if (!card.oracleId) {
+    errorMessage.value = 'This card does not have an Oracle ID to look up its printings.'
+    return
+  }
+
+  await loadPrintings()
+}
 
 /**
  * Searches Scryfall and displays the first page of results.
@@ -18,7 +128,10 @@ let activeRequest = null
  * @returns {Promise<void>}
  */
 async function handleSearch(query) {
-  if (loading.value) return
+  if (loading.value || saving.value) return
+
+  selectedCard.value = null
+  selectedPrinting.value = null
 
   const controller = new AbortController()
   activeRequest = controller
@@ -52,6 +165,17 @@ async function handleSearch(query) {
 }
 
 /**
+ * Returns to the existing search results without fetching them again.
+ * @returns {void}
+ */
+function backToResults() {
+  cancelSearch()
+  selectedCard.value = null
+  selectedPrinting.value = null
+  errorMessage.value = ''
+}
+
+/**
  * Cancels a pending search and prevents stale results from being displayed.
  * @returns {void}
  */
@@ -63,7 +187,7 @@ function cancelSearch() {
 
 watch(dialogOpen, (isOpen) => {
   if (!isOpen) {
-    cancelSearch()
+    backToResults()
   }
 })
 
@@ -78,8 +202,73 @@ onUnmounted(cancelSearch)
 
     <q-btn color="primary" icon="add" label="Add card" no-caps @click="dialogOpen = true" />
 
-    <AddCardDialog v-model="dialogOpen" :loading="loading" @search="handleSearch">
-      <div v-if="loading" role="status" aria-label="Searching cards">
+    <q-banner
+      v-if="successMessage"
+      class="bg-green-1 text-positive rounded-borders q-mt-md"
+      role="status"
+    >
+      {{ successMessage }}
+    </q-banner>
+
+    <AddCardDialog
+      v-model="dialogOpen"
+      :loading="loading"
+      :saving="saving"
+      :show-search="!selectedPrinting"
+      @search="handleSearch"
+    >
+      <CollectionEntryForm
+        v-if="selectedPrinting"
+        :key="selectedPrinting.scryfallId"
+        :card="selectedPrinting"
+        :saving="saving"
+        :save-error="saveError"
+        @submit="saveEntry"
+        @cancel="selectedPrinting = null"
+      />
+
+      <template v-else-if="selectedCard">
+        <q-btn
+          flat
+          no-caps
+          icon="arrow_back"
+          label="Back to results"
+          class="q-mb-md"
+          @click="backToResults"
+        />
+
+        <h2 class="text-h6 q-mt-none q-mb-md">Choose a printing of {{ selectedCard.name }}</h2>
+
+        <q-banner
+          v-if="errorMessage"
+          class="bg-red-1 text-negative rounded-borders q-mb-md"
+          role="alert"
+        >
+          {{ errorMessage }}
+
+          <template #action>
+            <q-btn
+              v-if="selectedCard.oracleId"
+              flat
+              no-caps
+              label="Retry"
+              :disable="loading"
+              @click="loadPrintings"
+            />
+          </template>
+        </q-banner>
+
+        <CardPrintingPicker
+          v-if="!errorMessage || printings.length"
+          :printings="printings"
+          :loading="loading"
+          :has-more="printingsHaveMore"
+          @select="selectedPrinting = $event"
+          @load-more="loadPrintings"
+        />
+      </template>
+
+      <div v-else-if="loading" role="status" aria-label="Searching cards">
         <q-skeleton v-for="item in 3" :key="item" type="rect" height="64px" class="q-mb-sm" />
       </div>
 
@@ -98,7 +287,7 @@ onUnmounted(cancelSearch)
         </p>
 
         <q-list v-if="cards.length" bordered separator>
-          <q-item v-for="card in cards" :key="card.scryfallId">
+          <q-item v-for="card in cards" :key="card.scryfallId" clickable @click="selectCard(card)">
             <q-item-section>
               <q-item-label>{{ card.name }}</q-item-label>
               <q-item-label caption>
