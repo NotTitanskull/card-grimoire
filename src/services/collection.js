@@ -1,4 +1,4 @@
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
+import { addDoc, collection, getDocs, orderBy, query, serverTimestamp } from 'firebase/firestore'
 import { CollectionEntry } from '../models/CollectionEntry.js'
 import { db } from './firestore.js'
 
@@ -50,4 +50,25 @@ export async function createCollectionEntry(userId, entry) {
   const document = await addDoc(entries, data)
 
   return document.id
+}
+
+/**
+ * Retrieves the user's saved collection entries, newest first.
+ * @param {string} userId Firebase Authentication UID.
+ * @returns {Promise<Array<Object>>} Stored entries with their document IDs.
+ * @throws {Error} If the user ID is invalid or the request fails.
+ */
+export async function getCollectionEntries(userId) {
+  if (typeof userId !== 'string' || userId.trim() === '' || userId.includes('/')) {
+    throw new TypeError('A valid user ID is required.')
+  }
+
+  const entries = collection(db, 'users', userId, 'collectionEntries')
+  const entriesQuery = query(entries, orderBy('createdAt', 'desc'))
+  const snapshot = await getDocs(entriesQuery)
+
+  return snapshot.docs.map((document) => ({
+    ...document.data(),
+    id: document.id,
+  }))
 }

@@ -18,11 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added collection loading from Firestore with automatic refresh after saving.
+- Added collection entry display with loading, error, retry, and empty states.
 - Added paper printing selection with pagination and an ownership details form.
 - Added collection entry creation in Firestore with saving, success, and error feedback.
 - Prevented repeated submissions and dialog dismissal while a collection entry is saving.
 - Added owner-only Firestore reads and validated creation rules for collection entries.
-
 - Added Oracle IDs and an API function for retrieving a card's paper printings.
 - Added shared Prettier configuration for consistent code formatting.
 - Added Scryfall card search through a dedicated API module.

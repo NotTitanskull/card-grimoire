@@ -1,7 +1,7 @@
 <script setup>
 import { onUnmounted, ref, watch } from 'vue'
 import { useAuthStore } from '../stores/auth.js'
-import { createCollectionEntry } from '../services/collection.js'
+import { createCollectionEntry, getCollectionEntries } from '../services/collection.js'
 import AddCardDialog from '../components/cards/AddCardDialog.vue'
 import { getCardPrintings, searchCards } from '../services/scryfall'
 import CardPrintingPicker from '../components/cards/CardPrintingPicker.vue'
@@ -22,8 +22,58 @@ const printings = ref([])
 const printingsPage = ref(0)
 const printingsHaveMore = ref(false)
 const selectedPrinting = ref(null)
+const collectionEntries = ref([])
+const collectionLoading = ref(false)
+const collectionError = ref('')
 
+let collectionRequestId = 0
 let activeRequest = null
+
+/**
+ * Loads saved entries for the current user.
+ * Ignores results from superseded requests or previous sessions.
+ * @returns {Promise<void>}
+ */
+async function loadCollection() {
+  const requestId = ++collectionRequestId
+  const userId = authStore.user?.uid
+
+  collectionError.value = ''
+
+  if (!userId) {
+    collectionEntries.value = []
+    collectionLoading.value = false
+    return
+  }
+
+  collectionLoading.value = true
+
+  try {
+    const entries = await getCollectionEntries(userId)
+
+    if (requestId !== collectionRequestId || authStore.user?.uid !== userId) return
+
+    collectionEntries.value = entries
+  } catch {
+    if (requestId !== collectionRequestId || authStore.user?.uid !== userId) return
+
+    collectionError.value = 'Unable to load your collection. Please try again.'
+  } finally {
+    if (requestId === collectionRequestId) {
+      collectionLoading.value = false
+    }
+  }
+}
+
+watch(
+  () => authStore.user?.uid,
+  () => {
+    collectionEntries.value = []
+    successMessage.value = ''
+    void loadCollection()
+  },
+  { immediate: true },
+)
 
 /**
  * Saves validated ownership details for the signed-in user.
@@ -48,6 +98,7 @@ async function saveEntry(entry) {
     await createCollectionEntry(userId, entry)
     successMessage.value = `${entry.card.name} was added to your collection.`
     dialogOpen.value = false
+    await loadCollection()
   } catch (error) {
     saveError.value =
       error.code === 'permission-denied'
@@ -191,7 +242,10 @@ watch(dialogOpen, (isOpen) => {
   }
 })
 
-onUnmounted(cancelSearch)
+onUnmounted(() => {
+  cancelSearch()
+  collectionRequestId += 1
+})
 </script>
 
 <template>
@@ -209,7 +263,60 @@ onUnmounted(cancelSearch)
     >
       {{ successMessage }}
     </q-banner>
+    <div class="q-mt-lg" :aria-busy="collectionLoading">
+      <div v-if="collectionLoading" role="status" aria-label="Loading collection">
+        <q-skeleton v-for="item in 3" :key="item" type="rect" height="88px" class="q-mb-sm" />
+      </div>
 
+      <q-banner
+        v-else-if="collectionError"
+        class="bg-red-1 text-negative rounded-borders"
+        role="alert"
+      >
+        {{ collectionError }}
+
+        <template #action>
+          <q-btn flat no-caps label="Retry" @click="loadCollection" />
+        </template>
+      </q-banner>
+
+      <q-list v-else-if="collectionEntries.length" bordered separator>
+        <q-item v-for="entry in collectionEntries" :key="entry.id">
+          <q-item-section avatar>
+            <q-img
+              v-if="entry.card.imageUrl"
+              :src="entry.card.imageUrl"
+              alt=""
+              width="48px"
+              :ratio="5 / 7"
+            />
+            <q-icon v-else name="image_not_supported" size="32px" />
+          </q-item-section>
+
+          <q-item-section>
+            <q-item-label>{{ entry.card.name }}</q-item-label>
+
+            <q-item-label caption>
+              {{ entry.card.setName }} · #{{ entry.card.collectorNumber }}
+            </q-item-label>
+
+            <q-item-label caption> {{ entry.condition }} · {{ entry.finish }} </q-item-label>
+
+            <q-item-label v-if="entry.favorite || entry.availableForTrade" caption>
+              <span v-if="entry.favorite">Favorite</span>
+              <span v-if="entry.favorite && entry.availableForTrade"> · </span>
+              <span v-if="entry.availableForTrade">Available for trade</span>
+            </q-item-label>
+          </q-item-section>
+
+          <q-item-section side>
+            <q-badge color="primary" :label="`Qty: ${entry.quantity}`" />
+          </q-item-section>
+        </q-item>
+      </q-list>
+
+      <p v-else role="status">Your collection is empty. Add a card to get started.</p>
+    </div>
     <AddCardDialog
       v-model="dialogOpen"
       :loading="loading"
