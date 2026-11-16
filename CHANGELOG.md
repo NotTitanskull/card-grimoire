@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added collection entry editing with prefilled ownership details and save feedback.
+- Added validated owner-only Firestore updates while protecting card identity and creation timestamps.
 - Added collection loading from Firestore with automatic refresh after saving.
 - Added collection entry display with loading, error, retry, and empty states.
 - Added paper printing selection with pagination and an ownership details form.

@@ -1,7 +1,12 @@
 <script setup>
 import { onUnmounted, ref, watch } from 'vue'
 import { useAuthStore } from '../stores/auth.js'
-import { createCollectionEntry, getCollectionEntries } from '../services/collection.js'
+import {
+  createCollectionEntry,
+  getCollectionEntries,
+  updateCollectionEntry,
+} from '../services/collection.js'
+import { Card } from '../models/Card.js'
 import AddCardDialog from '../components/cards/AddCardDialog.vue'
 import { getCardPrintings, searchCards } from '../services/scryfall'
 import CardPrintingPicker from '../components/cards/CardPrintingPicker.vue'
@@ -25,6 +30,8 @@ const selectedPrinting = ref(null)
 const collectionEntries = ref([])
 const collectionLoading = ref(false)
 const collectionError = ref('')
+const editingEntry = ref(null)
+const editDialogOpen = ref(false)
 
 let collectionRequestId = 0
 let activeRequest = null
@@ -65,16 +72,6 @@ async function loadCollection() {
   }
 }
 
-watch(
-  () => authStore.user?.uid,
-  () => {
-    collectionEntries.value = []
-    successMessage.value = ''
-    void loadCollection()
-  },
-  { immediate: true },
-)
-
 /**
  * Saves validated ownership details for the signed-in user.
  * @param {import('../models/CollectionEntry.js').CollectionEntry} entry Entry to save.
@@ -109,9 +106,42 @@ async function saveEntry(entry) {
   }
 }
 
-watch(selectedPrinting, () => {
+/**
+ * Saves ownership changes to the entry being edited.
+ * @param {import('../models/CollectionEntry.js').CollectionEntry} entry Updated details.
+ * @returns {Promise<void>}
+ */
+async function saveEditedEntry(entry) {
+  if (saving.value || !editingEntry.value) return
+
   saveError.value = ''
-})
+  successMessage.value = ''
+
+  const userId = authStore.user?.uid
+  const entryId = editingEntry.value.id
+
+  if (!userId) {
+    saveError.value = 'Please sign in again before saving your changes.'
+    return
+  }
+
+  saving.value = true
+
+  try {
+    await updateCollectionEntry(userId, entryId, entry)
+
+    successMessage.value = `${entry.card.name} was updated.`
+    editDialogOpen.value = false
+    await loadCollection()
+  } catch (error) {
+    saveError.value =
+      error.code === 'permission-denied'
+        ? 'Updating was denied. Check that the latest Firestore rules are published.'
+        : 'Unable to save your changes. Your details are still here; please try again.'
+  } finally {
+    saving.value = false
+  }
+}
 
 /**
  * Loads the next page of printings for the selected card.
@@ -236,9 +266,59 @@ function cancelSearch() {
   loading.value = false
 }
 
+/**
+ * Prepares a saved collection entry for editing.
+ * @param {Object} entry Saved entry, including its document ID.
+ * @returns {void}
+ */
+function openEditDialog(entry) {
+  if (saving.value) return
+
+  const storedCard = entry.card
+
+  const card = new Card({
+    id: storedCard.scryfallId,
+    oracle_id: storedCard.oracleId,
+    name: storedCard.name,
+    set: storedCard.setCode,
+    set_name: storedCard.setName,
+    collector_number: storedCard.collectorNumber,
+    type_line: storedCard.typeLine,
+    rarity: storedCard.rarity,
+    image_uris: { normal: storedCard.imageUrl },
+    finishes: storedCard.finishes,
+  })
+
+  editingEntry.value = { ...entry, card }
+  saveError.value = ''
+  successMessage.value = ''
+  editDialogOpen.value = true
+}
+
+watch(
+  () => authStore.user?.uid,
+  () => {
+    collectionEntries.value = []
+    successMessage.value = ''
+    void loadCollection()
+  },
+  { immediate: true },
+)
+
+watch(selectedPrinting, () => {
+  saveError.value = ''
+})
+
 watch(dialogOpen, (isOpen) => {
   if (!isOpen) {
     backToResults()
+  }
+})
+
+watch(editDialogOpen, (isOpen) => {
+  if (!isOpen) {
+    editingEntry.value = null
+    saveError.value = ''
   }
 })
 
@@ -311,6 +391,17 @@ onUnmounted(() => {
 
           <q-item-section side>
             <q-badge color="primary" :label="`Qty: ${entry.quantity}`" />
+
+            <q-btn
+              flat
+              no-caps
+              color="primary"
+              label="Edit"
+              class="q-mt-sm"
+              :aria-label="`Edit ${entry.card.name}`"
+              :disable="saving"
+              @click="openEditDialog(entry)"
+            />
           </q-item-section>
         </q-item>
       </q-list>
@@ -407,5 +498,47 @@ onUnmounted(() => {
         <p v-else>No matching cards found. Try another name.</p>
       </template>
     </AddCardDialog>
+
+    <q-dialog v-model="editDialogOpen" :persistent="saving" aria-labelledby="edit-entry-title">
+      <q-card class="edit-entry-dialog">
+        <q-card-section class="row items-center">
+          <h2 id="edit-entry-title" class="text-h6 q-ma-none">Edit collection entry</h2>
+
+          <q-space />
+
+          <q-btn
+            v-close-popup
+            flat
+            round
+            dense
+            icon="close"
+            aria-label="Close edit dialog"
+            :disable="saving"
+          />
+        </q-card-section>
+
+        <q-separator />
+
+        <q-card-section>
+          <CollectionEntryForm
+            v-if="editingEntry"
+            :key="editingEntry.id"
+            :card="editingEntry.card"
+            :initial-entry="editingEntry"
+            :saving="saving"
+            :save-error="saveError"
+            @submit="saveEditedEntry"
+            @cancel="editDialogOpen = false"
+          />
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </section>
 </template>
+
+<style scoped lang="scss">
+.edit-entry-dialog {
+  width: 40rem;
+  max-width: calc(100vw - 2rem);
+}
+</style>

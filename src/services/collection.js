@@ -1,4 +1,13 @@
-import { addDoc, collection, getDocs, orderBy, query, serverTimestamp } from 'firebase/firestore'
+import {
+  addDoc,
+  collection,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+} from 'firebase/firestore'
 import { CollectionEntry } from '../models/CollectionEntry.js'
 import { db } from './firestore.js'
 
@@ -71,4 +80,39 @@ export async function getCollectionEntries(userId) {
     ...document.data(),
     id: document.id,
   }))
+}
+
+/**
+ * Updates ownership details for an existing collection entry.
+ * @param {string} userId Firebase Authentication UID.
+ * @param {string} entryId Collection entry document ID.
+ * @param {CollectionEntry} entry Validated ownership details.
+ * @returns {Promise<void>}
+ * @throws {Error} If validation or the Firestore update fails.
+ */
+export async function updateCollectionEntry(userId, entryId, entry) {
+  for (const id of [userId, entryId]) {
+    if (typeof id !== 'string' || id.trim() === '' || id.includes('/')) {
+      throw new TypeError('Valid user and entry IDs are required.')
+    }
+  }
+
+  if (!(entry instanceof CollectionEntry)) {
+    throw new TypeError('A CollectionEntry instance is required.')
+  }
+
+  const validated = new CollectionEntry(entry.card, entry)
+  const reference = doc(db, 'users', userId, 'collectionEntries', entryId)
+
+  await updateDoc(reference, {
+    quantity: validated.quantity,
+    condition: validated.condition,
+    finish: validated.finish,
+    purchasePriceMinor: validated.purchasePriceMinor,
+    currency: validated.currency,
+    favorite: validated.favorite,
+    availableForTrade: validated.availableForTrade,
+    binderQuantities: { ...validated.binderQuantities },
+    updatedAt: serverTimestamp(),
+  })
 }

@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
-import { Card } from '../../models/Card.js'
-import { CollectionEntry } from '../../models/CollectionEntry.js'
+import { Card } from '@/models/Card.js'
+import { CollectionEntry } from '@/models/CollectionEntry.js'
 
 const props = defineProps({
   saving: {
@@ -16,18 +16,26 @@ const props = defineProps({
     type: Card,
     required: true,
   },
+  initialEntry: {
+    type: Object,
+    default: null,
+  },
 })
 
 const emit = defineEmits(['submit', 'cancel'])
 
 const conditions = ['Near Mint', 'Lightly Played', 'Moderately Played', 'Heavily Played', 'Damaged']
 
-const quantity = ref(1)
-const condition = ref('Near Mint')
-const finish = ref(props.card.finishes[0])
-const purchasePrice = ref('')
-const favorite = ref(false)
-const availableForTrade = ref(false)
+const quantity = ref(props.initialEntry?.quantity ?? 1)
+const condition = ref(props.initialEntry?.condition ?? 'Near Mint')
+const finish = ref(props.initialEntry?.finish ?? props.card.finishes[0])
+
+const initialPrice = props.initialEntry?.purchasePriceMinor
+
+const purchasePrice = ref(initialPrice == null ? '' : (initialPrice / 100).toFixed(2))
+
+const favorite = ref(props.initialEntry?.favorite ?? false)
+const availableForTrade = ref(props.initialEntry?.availableForTrade ?? false)
 const errorMessage = ref('')
 
 /**
@@ -74,6 +82,7 @@ function submitEntry() {
       purchasePriceMinor: parsePurchasePrice(purchasePrice.value),
       favorite: favorite.value,
       availableForTrade: availableForTrade.value,
+      binderQuantities: props.initialEntry?.binderQuantities ?? {},
     })
   } catch (error) {
     errorMessage.value =
@@ -147,13 +156,19 @@ function submitEntry() {
     </div>
 
     <div class="row justify-end q-gutter-sm">
-      <q-btn :disable="saving" flat no-caps label="Back to printings" @click="emit('cancel')" />
+      <q-btn
+        :disable="saving"
+        flat
+        no-caps
+        :label="initialEntry ? 'Cancel' : 'Back to printings'"
+        @click="emit('cancel')"
+      />
 
       <q-btn
         type="submit"
         color="primary"
         no-caps
-        label="Save to collection"
+        :label="initialEntry ? 'Save changes' : 'Save to collection'"
         :loading="saving"
         :disable="saving"
       />
