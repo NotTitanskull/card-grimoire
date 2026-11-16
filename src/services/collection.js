@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   orderBy,
@@ -115,4 +116,23 @@ export async function updateCollectionEntry(userId, entryId, entry) {
     binderQuantities: { ...validated.binderQuantities },
     updatedAt: serverTimestamp(),
   })
+}
+
+/**
+ * Deletes an entire owned collection entry.
+ * @param {string} userId Firebase Authentication UID.
+ * @param {string} entryId Collection entry document ID.
+ * @returns {Promise<void>}
+ * @throws {Error} If an identifier is invalid or deletion fails.
+ */
+export async function deleteCollectionEntry(userId, entryId) {
+  for (const id of [userId, entryId]) {
+    if (typeof id !== 'string' || id.trim() === '' || id.includes('/')) {
+      throw new TypeError('Valid user and entry IDs are required.')
+    }
+  }
+
+  const reference = doc(db, 'users', userId, 'collectionEntries', entryId)
+
+  await deleteDoc(reference)
 }

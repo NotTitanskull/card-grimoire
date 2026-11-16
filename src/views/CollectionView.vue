@@ -3,6 +3,7 @@ import { onUnmounted, ref, watch } from 'vue'
 import { useAuthStore } from '../stores/auth.js'
 import {
   createCollectionEntry,
+  deleteCollectionEntry,
   getCollectionEntries,
   updateCollectionEntry,
 } from '../services/collection.js'
@@ -32,6 +33,10 @@ const collectionLoading = ref(false)
 const collectionError = ref('')
 const editingEntry = ref(null)
 const editDialogOpen = ref(false)
+const deletingEntry = ref(null)
+const deleteDialogOpen = ref(false)
+const deleting = ref(false)
+const deleteError = ref('')
 
 let collectionRequestId = 0
 let activeRequest = null
@@ -295,6 +300,55 @@ function openEditDialog(entry) {
   editDialogOpen.value = true
 }
 
+/**
+ * Opens confirmation for deleting an entire collection entry.
+ * @param {Object} entry Saved entry to delete.
+ * @returns {void}
+ */
+function openDeleteDialog(entry) {
+  if (saving.value || deleting.value) return
+
+  deletingEntry.value = entry
+  deleteError.value = ''
+  successMessage.value = ''
+  deleteDialogOpen.value = true
+}
+
+/**
+ * Deletes the confirmed entry and refreshes the collection.
+ * @returns {Promise<void>}
+ */
+async function confirmDelete() {
+  if (deleting.value || !deletingEntry.value) return
+
+  deleteError.value = ''
+
+  const userId = authStore.user?.uid
+  const entry = deletingEntry.value
+
+  if (!userId) {
+    deleteError.value = 'Please sign in again before deleting an entry.'
+    return
+  }
+
+  deleting.value = true
+
+  try {
+    await deleteCollectionEntry(userId, entry.id)
+
+    successMessage.value = `${entry.card.name} was removed from your collection.`
+    deleteDialogOpen.value = false
+    await loadCollection()
+  } catch (error) {
+    deleteError.value =
+      error.code === 'permission-denied'
+        ? 'Deletion was denied. Check that the latest Firestore rules are published.'
+        : 'Unable to delete this entry. Please try again.'
+  } finally {
+    deleting.value = false
+  }
+}
+
 watch(
   () => authStore.user?.uid,
   () => {
@@ -319,6 +373,13 @@ watch(editDialogOpen, (isOpen) => {
   if (!isOpen) {
     editingEntry.value = null
     saveError.value = ''
+  }
+})
+
+watch(deleteDialogOpen, (isOpen) => {
+  if (!isOpen) {
+    deletingEntry.value = null
+    deleteError.value = ''
   }
 })
 
@@ -399,8 +460,18 @@ onUnmounted(() => {
               label="Edit"
               class="q-mt-sm"
               :aria-label="`Edit ${entry.card.name}`"
-              :disable="saving"
+              :disable="saving || deleting"
               @click="openEditDialog(entry)"
+            />
+
+            <q-btn
+              flat
+              no-caps
+              color="negative"
+              label="Delete"
+              :aria-label="`Delete ${entry.card.name}`"
+              :disable="saving || deleting"
+              @click="openDeleteDialog(entry)"
             />
           </q-item-section>
         </q-item>
@@ -533,12 +604,75 @@ onUnmounted(() => {
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <q-dialog
+      v-model="deleteDialogOpen"
+      :persistent="deleting"
+      aria-labelledby="delete-entry-title"
+      aria-describedby="delete-entry-description"
+    >
+      <q-card class="delete-entry-dialog">
+        <q-card-section>
+          <h2 id="delete-entry-title" class="text-h6 q-ma-none">Delete collection entry?</h2>
+        </q-card-section>
+
+        <q-card-section v-if="deletingEntry">
+          <p id="delete-entry-description">
+            Remove all {{ deletingEntry.quantity }} owned copies of
+            <strong>{{ deletingEntry.card.name }}</strong>
+            in this entry?
+          </p>
+
+          <p class="text-grey-7">
+            {{ deletingEntry.card.setName }} · #{{ deletingEntry.card.collectorNumber }} ·
+            {{ deletingEntry.condition }} · {{ deletingEntry.finish }}
+          </p>
+
+          <p class="q-mb-none">
+            This cannot be undone. To remove only some copies, cancel and edit the quantity instead.
+          </p>
+
+          <q-banner
+            v-if="deleteError"
+            class="bg-red-1 text-negative rounded-borders q-mt-md"
+            role="alert"
+          >
+            {{ deleteError }}
+          </q-banner>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn
+            flat
+            no-caps
+            label="Cancel"
+            autofocus
+            :disable="deleting"
+            @click="deleteDialogOpen = false"
+          />
+
+          <q-btn
+            no-caps
+            color="negative"
+            label="Delete entry"
+            :loading="deleting"
+            :disable="deleting"
+            @click="confirmDelete"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </section>
 </template>
 
 <style scoped lang="scss">
 .edit-entry-dialog {
   width: 40rem;
+  max-width: calc(100vw - 2rem);
+}
+
+.delete-entry-dialog {
+  width: 32rem;
   max-width: calc(100vw - 2rem);
 }
 </style>

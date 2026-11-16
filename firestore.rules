@@ -97,7 +97,7 @@ service cloud.firestore {
           'updatedAt'
         ]);
 
-      allow delete: if false;
+      allow delete: if isOwner(userId);
     }
 
     match /{document=**} {
