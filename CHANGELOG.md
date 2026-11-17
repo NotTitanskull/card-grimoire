@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Centralized collection-entry creation, restoration, and editing copies in CollectionEntryFactory.
+- Restored saved collection entries as validated models with document metadata kept separate.
+- Protected collection-entry details with private fields and validated edits through `updateDetails()`.
 - Separated card construction from Scryfall response formatting through CardFactory.
 - Simplified restoration of saved cards when editing collection entries.
 - Added printing-specific finish validation to card models.
@@ -20,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added automated checks for entry factories, isolated edits, Vue integration, and persistence serialization.
 - Added collection entry deletion with confirmation, error feedback, and owner-only Firestore permissions.
 - Added collection entry editing with prefilled ownership details and save feedback.
 - Added validated owner-only Firestore updates while protecting card identity and creation timestamps.

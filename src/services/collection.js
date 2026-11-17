@@ -9,8 +9,11 @@ import {
   serverTimestamp,
   updateDoc,
 } from 'firebase/firestore'
-import { CollectionEntry } from '../models/CollectionEntry.js'
+import { CollectionEntryFactory } from '../factories/CollectionEntryFactory.js'
 import { db } from './firestore.js'
+
+/** @typedef {import('../models/CollectionEntry.js').CollectionEntry} CollectionEntry */
+/** @typedef {{id: string, entry: CollectionEntry, createdAt: import('firebase/firestore').Timestamp, updatedAt: import('firebase/firestore').Timestamp}} CollectionRecord */
 
 /**
  * Saves a new collection entry under its owner's account.
@@ -24,11 +27,7 @@ export async function createCollectionEntry(userId, entry) {
     throw new TypeError('A valid user ID is required.')
   }
 
-  if (!(entry instanceof CollectionEntry)) {
-    throw new TypeError('A CollectionEntry instance is required.')
-  }
-
-  const validated = new CollectionEntry(entry.card, entry)
+  const validated = CollectionEntryFactory.copy(entry)
   const card = validated.card
 
   const data = {
@@ -65,7 +64,7 @@ export async function createCollectionEntry(userId, entry) {
 /**
  * Retrieves the user's saved collection entries, newest first.
  * @param {string} userId Firebase Authentication UID.
- * @returns {Promise<Array<Object>>} Stored entries with their document IDs.
+ * @returns {Promise<CollectionRecord[]>} Models with separate document metadata.
  * @throws {Error} If the user ID is invalid or the request fails.
  */
 export async function getCollectionEntries(userId) {
@@ -77,10 +76,16 @@ export async function getCollectionEntries(userId) {
   const entriesQuery = query(entries, orderBy('createdAt', 'desc'))
   const snapshot = await getDocs(entriesQuery)
 
-  return snapshot.docs.map((document) => ({
-    ...document.data(),
-    id: document.id,
-  }))
+  return snapshot.docs.map((document) => {
+    const data = document.data()
+
+    return {
+      id: document.id,
+      entry: CollectionEntryFactory.fromStoredData(data),
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt,
+    }
+  })
 }
 
 /**
@@ -98,11 +103,7 @@ export async function updateCollectionEntry(userId, entryId, entry) {
     }
   }
 
-  if (!(entry instanceof CollectionEntry)) {
-    throw new TypeError('A CollectionEntry instance is required.')
-  }
-
-  const validated = new CollectionEntry(entry.card, entry)
+  const validated = CollectionEntryFactory.copy(entry)
   const reference = doc(db, 'users', userId, 'collectionEntries', entryId)
 
   await updateDoc(reference, {

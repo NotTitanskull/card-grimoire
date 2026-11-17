@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { Card } from '@/models/Card.js'
 import { CollectionEntry } from '@/models/CollectionEntry.js'
+import { CollectionEntryFactory } from '@/factories/CollectionEntryFactory.js'
 
 const props = defineProps({
   saving: {
@@ -17,7 +18,7 @@ const props = defineProps({
     required: true,
   },
   initialEntry: {
-    type: Object,
+    type: CollectionEntry,
     default: null,
   },
 })
@@ -75,15 +76,21 @@ function submitEntry() {
   let entry
 
   try {
-    entry = new CollectionEntry(props.card, {
+    const changes = {
       quantity: Number(quantity.value),
       condition: condition.value,
       finish: finish.value,
       purchasePriceMinor: parsePurchasePrice(purchasePrice.value),
       favorite: favorite.value,
       availableForTrade: availableForTrade.value,
-      binderQuantities: props.initialEntry?.binderQuantities ?? {},
-    })
+    }
+
+    if (props.initialEntry) {
+      entry = CollectionEntryFactory.copy(props.initialEntry)
+      entry.updateDetails(changes)
+    } else {
+      entry = CollectionEntryFactory.create(props.card, changes)
+    }
   } catch (error) {
     errorMessage.value =
       error instanceof Error ? error.message : 'Please check your ownership details.'

@@ -161,3 +161,21 @@ and restore application objects when reading.
 
 Document IDs and persistence timestamps are handled by data-access
 modules, keeping Firebase dependencies out of domain models.
+
+## Collection entry construction and restoration
+
+`CollectionEntryFactory.create(card, details)` constructs new ownership models.
+`fromStoredData(data)` restores saved card and ownership fields through model validation;
+incomplete records are rejected instead of silently receiving new-entry defaults.
+`copy(entry)` creates independent editing copies. The form applies proposed changes
+through `updateDetails`, which validates the entire result before changing state.
+
+The collection service returns `{ id, entry, createdAt, updatedAt }` records. `entry`
+is a `CollectionEntry`; the other fields are persistence metadata. The Firestore
+field layout is unchanged, so existing saved entries do not require migration.
+
+At the Vue boundary, `CollectionView` marks restored models with `markRaw` to avoid
+proxying private class fields. Forms use reactive draft fields and edit independent
+models; after a successful save the view reloads and replaces its records. Models
+and factories do not import Vue or Firebase. Services explicitly serialize getters;
+spreading or JSON-stringifying a private-field model does not serialize its state.

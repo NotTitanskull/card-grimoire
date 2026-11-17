@@ -8,6 +8,8 @@ const FINISHES = ['nonfoil', 'foil', 'etched']
  * Represents owned copies of a specific card printing.
  */
 export class CollectionEntry {
+  #card
+  #details
   /**
    * @param {Card} card Normalized card printing.
    * @param {Object} [options={}] Ownership details.
@@ -101,14 +103,98 @@ export class CollectionEntry {
       throw new TypeError('Available for trade must be a boolean.')
     }
 
-    this.card = card
-    this.quantity = quantity
-    this.condition = condition
-    this.finish = finish
-    this.purchasePriceMinor = purchasePriceMinor
-    this.currency = currency
-    this.binderQuantities = { ...binderQuantities }
-    this.favorite = favorite
-    this.availableForTrade = availableForTrade
+    // Keep an independent, immutable printing snapshot.
+    const printing = new Card(card)
+    Object.freeze(printing.finishes)
+
+    this.#card = Object.freeze(printing)
+
+    this.#details = {
+      quantity,
+      condition,
+      finish,
+      purchasePriceMinor,
+      currency,
+      binderQuantities: { ...binderQuantities },
+      favorite,
+      availableForTrade,
+    }
+  }
+
+  get card() {
+    return this.#card
+  }
+
+  get quantity() {
+    return this.#details.quantity
+  }
+
+  get condition() {
+    return this.#details.condition
+  }
+
+  get finish() {
+    return this.#details.finish
+  }
+
+  get purchasePriceMinor() {
+    return this.#details.purchasePriceMinor
+  }
+
+  get currency() {
+    return this.#details.currency
+  }
+
+  get favorite() {
+    return this.#details.favorite
+  }
+
+  get availableForTrade() {
+    return this.#details.availableForTrade
+  }
+
+  /**
+   * Returns a copy so callers cannot change internal assignments.
+   * @returns {Object<string, number>}
+   */
+  get binderQuantities() {
+    return { ...this.#details.binderQuantities }
+  }
+
+  /**
+   * Applies ownership changes only when the complete result is valid.
+   * Card identity and binder assignments cannot be changed here.
+   * @param {Object} changes Ownership fields to change.
+   * @returns {void}
+   * @throws {TypeError} If a field or proposed ownership state is invalid.
+   */
+  updateDetails(changes) {
+    if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
+      throw new TypeError('Ownership changes must be an object.')
+    }
+
+    const editableFields = [
+      'quantity',
+      'condition',
+      'finish',
+      'purchasePriceMinor',
+      'favorite',
+      'availableForTrade',
+    ]
+
+    for (const field of Object.keys(changes)) {
+      if (!editableFields.includes(field)) {
+        throw new TypeError(`Cannot change "${field}" through ownership editing.`)
+      }
+    }
+
+    // Construction validates the entire proposed state using the existing rules.
+    const candidate = new CollectionEntry(this.#card, {
+      ...this.#details,
+      ...changes,
+    })
+
+    // This line runs only if every validation succeeded.
+    this.#details = candidate.#details
   }
 }

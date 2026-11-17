@@ -1,5 +1,5 @@
 <script setup>
-import { onUnmounted, ref, watch } from 'vue'
+import { markRaw, onUnmounted, ref, watch } from 'vue'
 import { useAuthStore } from '../stores/auth.js'
 import {
   createCollectionEntry,
@@ -7,7 +7,6 @@ import {
   getCollectionEntries,
   updateCollectionEntry,
 } from '../services/collection.js'
-import { CardFactory } from '../factories/CardFactory.js'
 import AddCardDialog from '../components/cards/AddCardDialog.vue'
 import { getCardPrintings, searchCards } from '../services/scryfall'
 import CardPrintingPicker from '../components/cards/CardPrintingPicker.vue'
@@ -65,7 +64,12 @@ async function loadCollection() {
 
     if (requestId !== collectionRequestId || authStore.user?.uid !== userId) return
 
-    collectionEntries.value = entries
+    // Private model fields must not be accessed through Vue proxies.
+    // Displayed models are replaced on reload; edits use independent working copies.
+    collectionEntries.value = entries.map((record) => ({
+      ...record,
+      entry: markRaw(record.entry),
+    }))
   } catch {
     if (requestId !== collectionRequestId || authStore.user?.uid !== userId) return
 
@@ -273,15 +277,13 @@ function cancelSearch() {
 
 /**
  * Prepares a saved collection entry for editing.
- * @param {Object} entry Saved entry, including its document ID.
+ * @param {import('../services/collection.js').CollectionRecord} record Saved model and metadata.
  * @returns {void}
  */
-function openEditDialog(entry) {
+function openEditDialog(record) {
   if (saving.value || deleting.value) return
 
-  const card = CardFactory.fromStoredData(entry.card)
-
-  editingEntry.value = { ...entry, card }
+  editingEntry.value = record
   saveError.value = ''
   successMessage.value = ''
   editDialogOpen.value = true
@@ -289,13 +291,13 @@ function openEditDialog(entry) {
 
 /**
  * Opens confirmation for deleting an entire collection entry.
- * @param {Object} entry Saved entry to delete.
+ * @param {import('../services/collection.js').CollectionRecord} record Saved model and metadata.
  * @returns {void}
  */
-function openDeleteDialog(entry) {
+function openDeleteDialog(record) {
   if (saving.value || deleting.value) return
 
-  deletingEntry.value = entry
+  deletingEntry.value = record
   deleteError.value = ''
   successMessage.value = ''
   deleteDialogOpen.value = true
@@ -311,7 +313,7 @@ async function confirmDelete() {
   deleteError.value = ''
 
   const userId = authStore.user?.uid
-  const entry = deletingEntry.value
+  const record = deletingEntry.value
 
   if (!userId) {
     deleteError.value = 'Please sign in again before deleting an entry.'
@@ -321,9 +323,9 @@ async function confirmDelete() {
   deleting.value = true
 
   try {
-    await deleteCollectionEntry(userId, entry.id)
+    await deleteCollectionEntry(userId, record.id)
 
-    successMessage.value = `${entry.card.name} was removed from your collection.`
+    successMessage.value = `${record.entry.card.name} was removed from your collection.`
     deleteDialogOpen.value = false
     await loadCollection()
   } catch (error) {
@@ -409,11 +411,11 @@ onUnmounted(() => {
       </q-banner>
 
       <q-list v-else-if="collectionEntries.length" bordered separator>
-        <q-item v-for="entry in collectionEntries" :key="entry.id">
+        <q-item v-for="record in collectionEntries" :key="record.id">
           <q-item-section avatar>
             <q-img
-              v-if="entry.card.imageUrl"
-              :src="entry.card.imageUrl"
+              v-if="record.entry.card.imageUrl"
+              :src="record.entry.card.imageUrl"
               alt=""
               width="48px"
               :ratio="5 / 7"
@@ -422,23 +424,25 @@ onUnmounted(() => {
           </q-item-section>
 
           <q-item-section>
-            <q-item-label>{{ entry.card.name }}</q-item-label>
+            <q-item-label>{{ record.entry.card.name }}</q-item-label>
 
             <q-item-label caption>
-              {{ entry.card.setName }} · #{{ entry.card.collectorNumber }}
+              {{ record.entry.card.setName }} · #{{ record.entry.card.collectorNumber }}
             </q-item-label>
 
-            <q-item-label caption> {{ entry.condition }} · {{ entry.finish }} </q-item-label>
+            <q-item-label caption>
+              {{ record.entry.condition }} · {{ record.entry.finish }}
+            </q-item-label>
 
-            <q-item-label v-if="entry.favorite || entry.availableForTrade" caption>
-              <span v-if="entry.favorite">Favorite</span>
-              <span v-if="entry.favorite && entry.availableForTrade"> · </span>
-              <span v-if="entry.availableForTrade">Available for trade</span>
+            <q-item-label v-if="record.entry.favorite || record.entry.availableForTrade" caption>
+              <span v-if="record.entry.favorite">Favorite</span>
+              <span v-if="record.entry.favorite && record.entry.availableForTrade"> · </span>
+              <span v-if="record.entry.availableForTrade">Available for trade</span>
             </q-item-label>
           </q-item-section>
 
           <q-item-section side>
-            <q-badge color="primary" :label="`Qty: ${entry.quantity}`" />
+            <q-badge color="primary" :label="`Qty: ${record.entry.quantity}`" />
 
             <q-btn
               flat
@@ -446,9 +450,9 @@ onUnmounted(() => {
               color="primary"
               label="Edit"
               class="q-mt-sm"
-              :aria-label="`Edit ${entry.card.name}`"
+              :aria-label="`Edit ${record.entry.card.name}`"
               :disable="saving || deleting"
-              @click="openEditDialog(entry)"
+              @click="openEditDialog(record)"
             />
 
             <q-btn
@@ -456,9 +460,9 @@ onUnmounted(() => {
               no-caps
               color="negative"
               label="Delete"
-              :aria-label="`Delete ${entry.card.name}`"
+              :aria-label="`Delete ${record.entry.card.name}`"
               :disable="saving || deleting"
-              @click="openDeleteDialog(entry)"
+              @click="openDeleteDialog(record)"
             />
           </q-item-section>
         </q-item>
@@ -581,8 +585,8 @@ onUnmounted(() => {
           <CollectionEntryForm
             v-if="editingEntry"
             :key="editingEntry.id"
-            :card="editingEntry.card"
-            :initial-entry="editingEntry"
+            :card="editingEntry.entry.card"
+            :initial-entry="editingEntry.entry"
             :saving="saving"
             :save-error="saveError"
             @submit="saveEditedEntry"
@@ -605,14 +609,16 @@ onUnmounted(() => {
 
         <q-card-section v-if="deletingEntry">
           <p id="delete-entry-description">
-            Remove all {{ deletingEntry.quantity }} owned copies of
-            <strong>{{ deletingEntry.card.name }}</strong>
+            Remove all {{ deletingEntry.entry.quantity }} owned copies of
+            <strong>{{ deletingEntry.entry.card.name }}</strong>
             in this entry?
           </p>
 
           <p class="text-grey-7">
-            {{ deletingEntry.card.setName }} · #{{ deletingEntry.card.collectorNumber }} ·
-            {{ deletingEntry.condition }} · {{ deletingEntry.finish }}
+            {{ deletingEntry.entry.card.setName }} · #{{
+              deletingEntry.entry.card.collectorNumber
+            }}
+            · {{ deletingEntry.entry.condition }} · {{ deletingEntry.entry.finish }}
           </p>
 
           <p class="q-mb-none">
