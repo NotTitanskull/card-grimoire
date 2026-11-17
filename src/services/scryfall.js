@@ -1,4 +1,6 @@
-import { Card } from '../models/Card.js'
+import { CardFactory } from '../factories/CardFactory.js'
+
+/** @typedef {import('../models/Card.js').Card} Card */
 
 const API_BASE_URL = 'https://api.scryfall.com'
 
@@ -54,7 +56,7 @@ export async function searchCards(query, { page = 1, signal, unique = 'cards' } 
   const result = await response.json()
 
   return {
-    cards: result.data.map((printing) => new Card(printing)),
+    cards: result.data.map((printing) => CardFactory.fromScryfall(printing)),
     totalCards: result.total_cards,
     hasMore: result.has_more,
   }

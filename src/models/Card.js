@@ -1,58 +1,70 @@
 /**
- * Represents a specific card printing.
- * Contains card information, not ownership or database behavior.
+ * Represents a specific card printing using application-owned fields.
+ * Has no knowledge of API responses, Vue, or database operations.
  */
 export class Card {
   /**
-   * Creates a card from Scryfall printing data.
-   * @param {Object} printing Card data returned by Scryfall.
-   * @param {string} printing.id Unique printing identifier.
-   * @param {string} [printing.oracle_id] Shared identity across printings of the same card.
-   * @param {string} printing.name Card name.
-   * @param {string} printing.set Set code.
-   * @param {string} printing.set_name Set display name.
-   * @param {string} printing.collector_number Collector number.
-   * @param {string} [printing.type_line] Card type description.
-   * @param {string} [printing.rarity] Printing rarity.
-   * @param {{normal?: string}} [printing.image_uris] Main card image URLs.
-   * @param {Array<{image_uris?: {normal?: string}}>} [printing.card_faces]
-   *   Individual faces for cards with separate face images.
-   * @param {string[]} printing.finishes Available finishes for this printing.
-   * @throws {TypeError} If printing data or a required field is invalid.
+   * @param {Object} data Normalized card information.
+   * @param {string} data.scryfallId Printing identifier.
+   * @param {string|null} [data.oracleId=null] Shared card identity.
+   * @param {string} data.name Card name.
+   * @param {string} data.setCode Set code.
+   * @param {string} data.setName Set name.
+   * @param {string} data.collectorNumber Collector number.
+   * @param {string} [data.typeLine=''] Card type description.
+   * @param {string} [data.rarity=''] Printing rarity.
+   * @param {string} [data.imageUrl=''] Display image URL.
+   * @param {string[]} data.finishes Available finishes.
+   * @throws {TypeError} If card information is invalid.
    */
-  constructor(printing) {
-    if (!printing || typeof printing !== 'object' || Array.isArray(printing)) {
-      throw new TypeError('Card printing data must be an object.')
+  constructor(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new TypeError('Card information must be an object.')
     }
 
-    const requiredFields = ['id', 'name', 'set', 'set_name', 'collector_number']
+    const requiredFields = ['scryfallId', 'name', 'setCode', 'setName', 'collectorNumber']
 
     for (const field of requiredFields) {
-      if (typeof printing[field] !== 'string' || printing[field].trim() === '') {
-        throw new TypeError(`Card printing requires a nonempty "${field}" string.`)
+      if (typeof data[field] !== 'string' || data[field].trim() === '') {
+        throw new TypeError(`Card requires a nonempty "${field}" string.`)
+      }
+    }
+
+    const oracleId = data.oracleId ?? null
+
+    if (oracleId !== null && (typeof oracleId !== 'string' || oracleId.trim() === '')) {
+      throw new TypeError('Oracle ID must be a nonempty string or null.')
+    }
+
+    const typeLine = data.typeLine ?? ''
+    const rarity = data.rarity ?? ''
+    const imageUrl = data.imageUrl ?? ''
+
+    for (const [field, value] of Object.entries({ typeLine, rarity, imageUrl })) {
+      if (typeof value !== 'string') {
+        throw new TypeError(`Card "${field}" must be a string.`)
       }
     }
 
     const supportedFinishes = ['nonfoil', 'foil', 'etched']
 
     if (
-      !Array.isArray(printing.finishes) ||
-      printing.finishes.length === 0 ||
-      !printing.finishes.every((finish) => supportedFinishes.includes(finish))
+      !Array.isArray(data.finishes) ||
+      data.finishes.length === 0 ||
+      !data.finishes.every((finish) => supportedFinishes.includes(finish))
     ) {
-      throw new TypeError('Card printing requires valid available finishes.')
+      throw new TypeError('Card requires valid available finishes.')
     }
 
-    this.scryfallId = printing.id
-    this.oracleId = printing.oracle_id ?? null
-    this.name = printing.name
-    this.setCode = printing.set.toUpperCase()
-    this.setName = printing.set_name
-    this.collectorNumber = printing.collector_number
-    this.typeLine = printing.type_line ?? ''
-    this.rarity = printing.rarity ?? ''
-    this.imageUrl =
-      printing.image_uris?.normal ?? printing.card_faces?.[0]?.image_uris?.normal ?? ''
-    this.finishes = [...printing.finishes]
+    this.scryfallId = data.scryfallId
+    this.oracleId = oracleId
+    this.name = data.name
+    this.setCode = data.setCode.toUpperCase()
+    this.setName = data.setName
+    this.collectorNumber = data.collectorNumber
+    this.typeLine = typeLine
+    this.rarity = rarity
+    this.imageUrl = imageUrl
+    this.finishes = [...data.finishes]
   }
 }

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Separated card construction from Scryfall response formatting through CardFactory.
+- Simplified restoration of saved cards when editing collection entries.
 - Added printing-specific finish validation to card models.
 - Lazy-loaded route views and separated Firestore initialization from authentication.
 - Refined page headings and authentication form spacing.

@@ -7,7 +7,7 @@ import {
   getCollectionEntries,
   updateCollectionEntry,
 } from '../services/collection.js'
-import { Card } from '../models/Card.js'
+import { CardFactory } from '../factories/CardFactory.js'
 import AddCardDialog from '../components/cards/AddCardDialog.vue'
 import { getCardPrintings, searchCards } from '../services/scryfall'
 import CardPrintingPicker from '../components/cards/CardPrintingPicker.vue'
@@ -277,22 +277,9 @@ function cancelSearch() {
  * @returns {void}
  */
 function openEditDialog(entry) {
-  if (saving.value) return
+  if (saving.value || deleting.value) return
 
-  const storedCard = entry.card
-
-  const card = new Card({
-    id: storedCard.scryfallId,
-    oracle_id: storedCard.oracleId,
-    name: storedCard.name,
-    set: storedCard.setCode,
-    set_name: storedCard.setName,
-    collector_number: storedCard.collectorNumber,
-    type_line: storedCard.typeLine,
-    rarity: storedCard.rarity,
-    image_uris: { normal: storedCard.imageUrl },
-    finishes: storedCard.finishes,
-  })
+  const card = CardFactory.fromStoredData(entry.card)
 
   editingEntry.value = { ...entry, card }
   saveError.value = ''
