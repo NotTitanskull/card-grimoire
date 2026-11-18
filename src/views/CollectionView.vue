@@ -6,11 +6,13 @@ import {
   deleteCollectionEntry,
   getCollectionEntries,
   updateCollectionEntry,
+  saveBinderAssignment,
 } from '../services/collection.js'
 import AddCardDialog from '../components/cards/AddCardDialog.vue'
 import { getCardPrintings, searchCards } from '../services/scryfall'
 import CardPrintingPicker from '../components/cards/CardPrintingPicker.vue'
 import InventoryForm from '../components/cards/InventoryForm.vue'
+import { getBinders } from '../services/binders.js'
 
 const authStore = useAuthStore()
 const saving = ref(false)
@@ -36,6 +38,17 @@ const deletingEntry = ref(null)
 const deleteDialogOpen = ref(false)
 const deleting = ref(false)
 const deleteError = ref('')
+const binderDialogOpen = ref(false)
+const binderEntry = ref(null)
+const binderOptions = ref([])
+const selectedBinderId = ref(null)
+const binderQuantity = ref(0)
+const bindersLoading = ref(false)
+const binderLoadError = ref('')
+const binderSaving = ref(false)
+const binderSaveError = ref('')
+
+let binderRequestId = 0
 
 let collectionRequestId = 0
 let activeRequest = null
@@ -289,6 +302,80 @@ function openEditDialog(record) {
   editDialogOpen.value = true
 }
 
+async function openBinderDialog(record) {
+  const userId = authStore.user?.uid
+  if (!userId || saving.value || deleting.value) return
+
+  const requestId = ++binderRequestId
+  binderEntry.value = record
+  binderOptions.value = []
+  selectedBinderId.value = null
+  binderQuantity.value = 0
+  binderLoadError.value = ''
+  binderSaveError.value = ''
+  bindersLoading.value = true
+  binderDialogOpen.value = true
+
+  try {
+    const binders = await getBinders(userId)
+    if (requestId !== binderRequestId || authStore.user?.uid !== userId) return
+
+    binderOptions.value = binders.map(({ id, binder }) => ({
+      label: binder.name,
+      value: id,
+    }))
+  } catch {
+    if (requestId === binderRequestId) {
+      binderLoadError.value = 'Could not load your binders.'
+    }
+  } finally {
+    if (requestId === binderRequestId) {
+      bindersLoading.value = false
+    }
+  }
+}
+
+function selectBinder(binderId) {
+  binderSaveError.value = ''
+  selectedBinderId.value = binderId
+  binderQuantity.value = binderEntry.value?.entry.binderQuantities[binderId] ?? 0
+}
+
+async function submitBinderAssignment() {
+  const userId = authStore.user?.uid
+  const entryId = binderEntry.value?.id
+  const binderId = selectedBinderId.value
+  const quantity = binderQuantity.value
+
+  if (!userId || !entryId || !binderId || bindersLoading.value || binderSaving.value) return
+
+  binderSaveError.value = ''
+
+  if (!Number.isSafeInteger(quantity) || quantity < 0) {
+    binderSaveError.value = 'Enter a whole number of copies, zero or greater.'
+    return
+  }
+
+  binderSaving.value = true
+
+  try {
+    await saveBinderAssignment(userId, entryId, binderId, quantity)
+    if (authStore.user?.uid !== userId) return
+
+    binderDialogOpen.value = false
+    successMessage.value = quantity === 0 ? 'Binder assignment removed.' : 'Binder assignment saved.'
+    await loadCollection()
+  } catch (error) {
+    if (authStore.user?.uid !== userId) return
+
+    binderSaveError.value = error.code
+      ? 'Could not save the binder assignment. Please try again.'
+      : error.message
+  } finally {
+    binderSaving.value = false
+  }
+}
+
 /**
  * Opens confirmation for deleting an entire collection entry.
  * @param {import('../services/collection.js').CollectionRecord} record Saved model and metadata.
@@ -342,6 +429,9 @@ watch(
   () => authStore.user?.uid,
   () => {
     inventory.value = []
+    binderRequestId += 1
+    binderDialogOpen.value = false
+    binderEntry.value = null
     successMessage.value = ''
     void loadCollection()
   },
@@ -442,34 +532,101 @@ onUnmounted(() => {
           </q-item-section>
 
           <q-item-section side>
-            <q-badge color="primary" :label="`Qty: ${record.entry.quantity}`" />
-
-            <q-btn
-              flat
-              no-caps
-              color="primary"
-              label="Edit"
-              class="q-mt-sm"
-              :aria-label="`Edit ${record.entry.card.name}`"
-              :disable="saving || deleting"
-              @click="openEditDialog(record)"
-            />
-
-            <q-btn
-              flat
-              no-caps
-              color="negative"
-              label="Delete"
-              :aria-label="`Delete ${record.entry.card.name}`"
-              :disable="saving || deleting"
-              @click="openDeleteDialog(record)"
-            />
+            <div class="row items-center no-wrap q-gutter-x-xs">
+              <q-badge color="primary" :label="`Qty: ${record.entry.quantity}`" />
+              <q-btn-dropdown
+                flat
+                dense
+                dropdown-icon="more_vert"
+                no-icon-animation
+                :toggle-aria-label="`Actions for ${record.entry.card.name}`"
+                :disable="saving || deleting || binderSaving"
+              >
+                <q-list>
+                  <q-item v-close-popup clickable @click="openEditDialog(record)">
+                    <q-item-section side><q-icon name="edit" size="20px" /></q-item-section>
+                    <q-item-section>Edit</q-item-section>
+                  </q-item>
+                  <q-item v-close-popup clickable @click="openBinderDialog(record)">
+                    <q-item-section side><q-icon name="book" size="20px" /></q-item-section>
+                    <q-item-section>Assign to binder</q-item-section>
+                  </q-item>
+                  <q-separator />
+                  <q-item
+                    v-close-popup
+                    clickable
+                    class="text-negative"
+                    @click="openDeleteDialog(record)"
+                  >
+                    <q-item-section side>
+                      <q-icon name="delete" color="negative" size="20px" />
+                    </q-item-section>
+                    <q-item-section>Delete</q-item-section>
+                  </q-item>
+                </q-list>
+              </q-btn-dropdown>
+            </div>
           </q-item-section>
         </q-item>
       </q-list>
 
       <p v-else role="status">Your collection is empty. Add a card to get started.</p>
     </div>
+    <q-dialog v-model="binderDialogOpen" :persistent="binderSaving">
+      <q-card v-if="binderEntry">
+        <q-card-section>
+          <h2 class="text-h6 q-my-none">Assign {{ binderEntry.entry.card.name }} to a binder</h2>
+        </q-card-section>
+
+        <q-card-section class="q-gutter-md">
+          <p v-if="bindersLoading" role="status">Loading binders…</p>
+          <p v-else-if="binderLoadError" class="text-negative" role="alert">
+            {{ binderLoadError }}
+          </p>
+          <p v-else-if="binderOptions.length === 0">Create a binder on the Binders page first.</p>
+
+          <template v-else>
+            <q-select
+              :model-value="selectedBinderId"
+              :options="binderOptions"
+              label="Binder"
+              outlined
+              emit-value
+              map-options
+              :disable="binderSaving"
+              @update:model-value="selectBinder"
+            />
+            <q-input
+              v-if="selectedBinderId"
+              v-model.number="binderQuantity"
+              type="number"
+              min="0"
+              step="1"
+              label="Assigned copies"
+              hint="Enter 0 to remove the assignment"
+              outlined
+              :disable="binderSaving"
+            />
+          </template>
+
+          <p v-if="binderSaveError" class="text-negative" role="alert">
+            {{ binderSaveError }}
+          </p>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn v-close-popup flat no-caps label="Close" :disable="binderSaving" />
+          <q-btn
+            color="primary"
+            no-caps
+            label="Save"
+            :loading="binderSaving"
+            :disable="!selectedBinderId || bindersLoading"
+            @click="submitBinderAssignment"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
     <AddCardDialog
       v-model="dialogOpen"
       :loading="loading"

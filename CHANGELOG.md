@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Moved collection row actions into a compact menu beside the quantity badge.
+- Replaced binder dropdowns with a card grid, matching loading skeletons, and a separate contents view.
 - Renamed the owned-card model, factory, and form to `Inventory`, `InventoryFactory`, and `InventoryForm`.
 - Switched collection reads and writes to `users/{userId}/inventory` in Firestore.
 - Centralized collection-entry creation, restoration, and editing copies in CollectionEntryFactory.
@@ -25,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added binder assignments from the Collection page, with Firestore validation that keeps assigned copies within the owned quantity.
 - Added binder creation and listing, with name validation and owner-only Firestore access.
 - Added automated checks for entry factories, isolated edits, Vue integration, and persistence serialization.
 - Added collection entry deletion with confirmation, error feedback, and owner-only Firestore permissions.

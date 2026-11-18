@@ -7,7 +7,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  updateDoc,
+  runTransaction,
 } from 'firebase/firestore'
 import { InventoryFactory } from '../factories/InventoryFactory.js'
 import { db } from './firestore.js'
@@ -103,19 +103,82 @@ export async function updateCollectionEntry(userId, entryId, entry) {
     }
   }
 
-  const validated = InventoryFactory.copy(entry)
   const reference = doc(db, 'users', userId, 'inventory', entryId)
 
-  await updateDoc(reference, {
-    quantity: validated.quantity,
-    condition: validated.condition,
-    finish: validated.finish,
-    purchasePriceMinor: validated.purchasePriceMinor,
-    currency: validated.currency,
-    favorite: validated.favorite,
-    availableForTrade: validated.availableForTrade,
-    binderQuantities: { ...validated.binderQuantities },
-    updatedAt: serverTimestamp(),
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(reference)
+
+    if (!snapshot.exists()) {
+      throw new Error('This inventory entry no longer exists.')
+    }
+
+    const currentEntry = InventoryFactory.fromStoredData(snapshot.data())
+    const changes = {
+      quantity: entry.quantity,
+      condition: entry.condition,
+      finish: entry.finish,
+      purchasePriceMinor: entry.purchasePriceMinor,
+      favorite: entry.favorite,
+      availableForTrade: entry.availableForTrade,
+    }
+
+    currentEntry.updateDetails(changes)
+
+    transaction.update(reference, {
+      ...changes,
+      updatedAt: serverTimestamp(),
+    })
+  })
+}
+
+/**
+ * Sets the number of copies assigned to one binder.
+ * @param {string} userId Firebase Authentication UID.
+ * @param {string} entryId Inventory document ID.
+ * @param {string} binderId Binder document ID.
+ * @param {number} quantity Assigned copies. Zero removes the assignment.
+ * @returns {Promise<void>}
+ */
+export async function saveBinderAssignment(userId, entryId, binderId, quantity) {
+  for (const id of [userId, entryId, binderId]) {
+    if (typeof id !== 'string' || id.trim() === '' || id.includes('/')) {
+      throw new TypeError('Valid user, inventory, and binder IDs are required.')
+    }
+  }
+
+  const entryRef = doc(db, 'users', userId, 'inventory', entryId)
+  const binderRef = doc(db, 'users', userId, 'binders', binderId)
+
+  await runTransaction(db, async (transaction) => {
+    const entrySnapshot = await transaction.get(entryRef)
+
+    if (!entrySnapshot.exists()) {
+      throw new Error('This inventory entry no longer exists.')
+    }
+
+    const entry = InventoryFactory.fromStoredData(entrySnapshot.data())
+    entry.assignToBinder(binderId, quantity)
+
+    if (quantity > 0) {
+      const binderSnapshot = await transaction.get(binderRef)
+
+      if (!binderSnapshot.exists()) {
+        throw new Error('This binder no longer exists.')
+      }
+    }
+
+    const binderQuantities = entry.binderQuantities
+    const assignedQuantity = Object.values(binderQuantities).reduce(
+      (total, copies) => total + copies,
+      0,
+    )
+
+    transaction.update(entryRef, {
+      binderQuantities,
+      assignedQuantity,
+      lastBinderId: binderId,
+      updatedAt: serverTimestamp(),
+    })
   })
 }
 

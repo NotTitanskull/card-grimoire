@@ -41,7 +41,7 @@ service cloud.firestore {
         && card.finishes.hasOnly(['nonfoil', 'foil', 'etched']);
     }
 
-    function isValidEntry(data) {
+    function isValidInventoryEntry(data) {
       let fields = [
         'card', 'quantity', 'condition', 'finish',
         'purchasePriceMinor', 'currency', 'favorite',
@@ -50,7 +50,7 @@ service cloud.firestore {
       ];
 
       return data.keys().hasAll(fields)
-        && data.keys().hasOnly(fields)
+        && data.keys().hasOnly(fields.concat(['assignedQuantity', 'lastBinderId']))
         && isValidCard(data.card)
         && isSafeNonnegativeInteger(data.quantity)
         && data.quantity > 0
@@ -71,10 +71,35 @@ service cloud.firestore {
         && data.favorite is bool
         && data.availableForTrade is bool
         && data.binderQuantities is map
-        && data.binderQuantities.size() == 0
         && data.createdAt is timestamp
         && data.updatedAt is timestamp
         && data.updatedAt == request.time;
+    }
+
+    function isValidEntry(data) {
+      return isValidInventoryEntry(data)
+        && data.binderQuantities.size() == 0
+        && !data.keys().hasAny(['assignedQuantity', 'lastBinderId']);
+    }
+
+    function isValidBinderChange(userId, before, after) {
+      let binderId = after.lastBinderId;
+      let oldCopies = before.binderQuantities.get(binderId, 0);
+      let newCopies = after.binderQuantities.get(binderId, 0);
+      let oldTotal = before.get('assignedQuantity', 0);
+
+      return isNonemptyString(binderId)
+        && binderId.matches('[^/]+')
+        && after.binderQuantities.diff(before.binderQuantities).affectedKeys().hasOnly([binderId])
+        && isSafeNonnegativeInteger(newCopies)
+        && (
+          (newCopies == 0 && !(binderId in after.binderQuantities))
+          || (newCopies > 0
+            && exists(/databases/$(database)/documents/users/$(userId)/binders/$(binderId)))
+        )
+        && isSafeNonnegativeInteger(after.assignedQuantity)
+        && after.assignedQuantity == oldTotal - oldCopies + newCopies
+        && after.assignedQuantity <= after.quantity;
     }
 
     match /users/{userId}/inventory/{entryId} {
@@ -85,17 +110,22 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
 
       allow update: if isOwner(userId)
-        && isValidEntry(request.resource.data)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'quantity',
-          'condition',
-          'finish',
-          'purchasePriceMinor',
-          'currency',
-          'favorite',
-          'availableForTrade',
-          'updatedAt'
-        ]);
+        && isValidInventoryEntry(request.resource.data)
+        && (
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'quantity', 'condition', 'finish', 'purchasePriceMinor',
+              'currency', 'favorite', 'availableForTrade', 'updatedAt'
+            ])
+            && request.resource.data.quantity >= resource.data.get('assignedQuantity', 0)
+          )
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'binderQuantities', 'assignedQuantity', 'lastBinderId', 'updatedAt'
+            ])
+            && isValidBinderChange(userId, resource.data, request.resource.data)
+          )
+        );
 
       allow delete: if isOwner(userId);
     }

@@ -162,6 +162,35 @@ export class Inventory {
   }
 
   /**
+   * Sets the number of copies assigned to a binder.
+   * @param {string} binderId Firestore document ID of the binder.
+   * @param {number} quantity Assigned copies. Zero removes the assignment.
+   * @throws {TypeError} If the binder ID, quantity, or total assignment is invalid.
+   */
+  assignToBinder(binderId, quantity) {
+    if (typeof binderId !== 'string' || binderId.trim() === '' || binderId.includes('/')) {
+      throw new TypeError('A valid binder ID is required.')
+    }
+
+    if (!Number.isSafeInteger(quantity) || quantity < 0) {
+      throw new TypeError('Binder quantity must be a nonnegative safe integer.')
+    }
+
+    const binderQuantities = { ...this.#details.binderQuantities, [binderId]: quantity }
+
+    if (quantity === 0) {
+      delete binderQuantities[binderId]
+    }
+
+    const candidate = new Inventory(this.#card, {
+      ...this.#details,
+      binderQuantities,
+    })
+
+    this.#details = candidate.#details
+  }
+
+  /**
    * Applies ownership changes only when the complete result is valid.
    * Card identity and binder assignments cannot be changed here.
    * @param {Object} changes Ownership fields to change.

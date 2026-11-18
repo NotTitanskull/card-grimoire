@@ -189,7 +189,7 @@ test('service writes the existing schema and restores models with separate metad
     'orderBy',
     'query',
     'serverTimestamp',
-    'updateDoc',
+    'runTransaction',
     source +
       '\nreturn {createCollectionEntry, getCollectionEntries, updateCollectionEntry, deleteCollectionEntry}',
   )
@@ -215,8 +215,13 @@ test('service writes the existing schema and restores models with separate metad
     (...args) => args,
     (...args) => args,
     () => timestamp,
-    async (_reference, data) => {
-      stored = { ...stored, ...data }
+    async (_db, callback) => {
+      await callback({
+        get: async () => ({ exists: () => true, data: () => stored }),
+        update: (_reference, data) => {
+          stored = { ...stored, ...data }
+        },
+      })
     },
   )
 
