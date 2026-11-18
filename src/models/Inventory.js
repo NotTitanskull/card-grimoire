@@ -7,7 +7,7 @@ const FINISHES = ['nonfoil', 'foil', 'etched']
 /**
  * Represents owned copies of a specific card printing.
  */
-export class CollectionEntry {
+export class Inventory {
   #card
   #details
   /**
@@ -189,7 +189,7 @@ export class CollectionEntry {
     }
 
     // Construction validates the entire proposed state using the existing rules.
-    const candidate = new CollectionEntry(this.#card, {
+    const candidate = new Inventory(this.#card, {
       ...this.#details,
       ...changes,
     })

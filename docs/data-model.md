@@ -13,7 +13,7 @@ Dedicated data-access modules handle API and database operations.
 Each user's private data lives under their Firebase Authentication UID:
 
 - users/{userId}
-- users/{userId}/collectionEntries/{entryId}
+- users/{userId}/inventory/{entryId}
 - users/{userId}/binders/{binderId}
 - users/{userId}/wishlistEntries/{wishlistEntryId}
 - users/{userId}/trades/{tradeId}
@@ -164,14 +164,14 @@ modules, keeping Firebase dependencies out of domain models.
 
 ## Collection entry construction and restoration
 
-`CollectionEntryFactory.create(card, details)` constructs new ownership models.
+`InventoryFactory.create(card, details)` constructs new ownership models.
 `fromStoredData(data)` restores saved card and ownership fields through model validation;
 incomplete records are rejected instead of silently receiving new-entry defaults.
 `copy(entry)` creates independent editing copies. The form applies proposed changes
 through `updateDetails`, which validates the entire result before changing state.
 
 The collection service returns `{ id, entry, createdAt, updatedAt }` records. `entry`
-is a `CollectionEntry`; the other fields are persistence metadata. The Firestore
+is a `Inventory`; the other fields are persistence metadata. The Firestore
 field layout is unchanged, so existing saved entries do not require migration.
 
 At the Vue boundary, `CollectionView` marks restored models with `markRaw` to avoid

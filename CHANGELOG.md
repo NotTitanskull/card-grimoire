@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Renamed the owned-card model, factory, and form to `Inventory`, `InventoryFactory`, and `InventoryForm`.
+- Switched collection reads and writes to `users/{userId}/inventory` in Firestore.
 - Centralized collection-entry creation, restoration, and editing copies in CollectionEntryFactory.
 - Restored saved collection entries as validated models with document metadata kept separate.
 - Protected collection-entry details with private fields and validated edits through `updateDetails()`.

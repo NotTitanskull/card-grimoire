@@ -77,6 +77,30 @@ service cloud.firestore {
         && data.updatedAt == request.time;
     }
 
+    match /users/{userId}/inventory/{entryId} {
+      allow read: if isOwner(userId);
+
+      allow create: if isOwner(userId)
+        && isValidEntry(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if isOwner(userId)
+        && isValidEntry(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'quantity',
+          'condition',
+          'finish',
+          'purchasePriceMinor',
+          'currency',
+          'favorite',
+          'availableForTrade',
+          'updatedAt'
+        ]);
+
+      allow delete: if isOwner(userId);
+    }
+
+    // Keep access for existing app versions during the inventory migration.
     match /users/{userId}/collectionEntries/{entryId} {
       allow read: if isOwner(userId);
 

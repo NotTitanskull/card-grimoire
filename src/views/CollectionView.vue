@@ -10,7 +10,7 @@ import {
 import AddCardDialog from '../components/cards/AddCardDialog.vue'
 import { getCardPrintings, searchCards } from '../services/scryfall'
 import CardPrintingPicker from '../components/cards/CardPrintingPicker.vue'
-import CollectionEntryForm from '../components/cards/CollectionEntryForm.vue'
+import InventoryForm from '../components/cards/InventoryForm.vue'
 
 const authStore = useAuthStore()
 const saving = ref(false)
@@ -27,7 +27,7 @@ const printings = ref([])
 const printingsPage = ref(0)
 const printingsHaveMore = ref(false)
 const selectedPrinting = ref(null)
-const collectionEntries = ref([])
+const inventory = ref([])
 const collectionLoading = ref(false)
 const collectionError = ref('')
 const editingEntry = ref(null)
@@ -52,7 +52,7 @@ async function loadCollection() {
   collectionError.value = ''
 
   if (!userId) {
-    collectionEntries.value = []
+    inventory.value = []
     collectionLoading.value = false
     return
   }
@@ -66,7 +66,7 @@ async function loadCollection() {
 
     // Private model fields must not be accessed through Vue proxies.
     // Displayed models are replaced on reload; edits use independent working copies.
-    collectionEntries.value = entries.map((record) => ({
+    inventory.value = entries.map((record) => ({
       ...record,
       entry: markRaw(record.entry),
     }))
@@ -83,7 +83,7 @@ async function loadCollection() {
 
 /**
  * Saves validated ownership details for the signed-in user.
- * @param {import('../models/CollectionEntry.js').CollectionEntry} entry Entry to save.
+ * @param {import('../models/Inventory.js').Inventory} entry Entry to save.
  * @returns {Promise<void>}
  */
 async function saveEntry(entry) {
@@ -117,7 +117,7 @@ async function saveEntry(entry) {
 
 /**
  * Saves ownership changes to the entry being edited.
- * @param {import('../models/CollectionEntry.js').CollectionEntry} entry Updated details.
+ * @param {import('../models/Inventory.js').Inventory} entry Updated details.
  * @returns {Promise<void>}
  */
 async function saveEditedEntry(entry) {
@@ -341,7 +341,7 @@ async function confirmDelete() {
 watch(
   () => authStore.user?.uid,
   () => {
-    collectionEntries.value = []
+    inventory.value = []
     successMessage.value = ''
     void loadCollection()
   },
@@ -410,8 +410,8 @@ onUnmounted(() => {
         </template>
       </q-banner>
 
-      <q-list v-else-if="collectionEntries.length" bordered separator>
-        <q-item v-for="record in collectionEntries" :key="record.id">
+      <q-list v-else-if="inventory.length" bordered separator>
+        <q-item v-for="record in inventory" :key="record.id">
           <q-item-section avatar>
             <q-img
               v-if="record.entry.card.imageUrl"
@@ -477,7 +477,7 @@ onUnmounted(() => {
       :show-search="!selectedPrinting"
       @search="handleSearch"
     >
-      <CollectionEntryForm
+      <InventoryForm
         v-if="selectedPrinting"
         :key="selectedPrinting.scryfallId"
         :card="selectedPrinting"
@@ -582,7 +582,7 @@ onUnmounted(() => {
         <q-separator />
 
         <q-card-section>
-          <CollectionEntryForm
+          <InventoryForm
             v-if="editingEntry"
             :key="editingEntry.id"
             :card="editingEntry.entry.card"

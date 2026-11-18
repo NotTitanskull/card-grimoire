@@ -1,8 +1,8 @@
 <script setup>
 import { ref } from 'vue'
 import { Card } from '@/models/Card.js'
-import { CollectionEntry } from '@/models/CollectionEntry.js'
-import { CollectionEntryFactory } from '@/factories/CollectionEntryFactory.js'
+import { Inventory } from '@/models/Inventory.js'
+import { InventoryFactory } from '@/factories/InventoryFactory.js'
 
 const props = defineProps({
   saving: {
@@ -18,7 +18,7 @@ const props = defineProps({
     required: true,
   },
   initialEntry: {
-    type: CollectionEntry,
+    type: Inventory,
     default: null,
   },
 })
@@ -86,10 +86,10 @@ function submitEntry() {
     }
 
     if (props.initialEntry) {
-      entry = CollectionEntryFactory.copy(props.initialEntry)
+      entry = InventoryFactory.copy(props.initialEntry)
       entry.updateDetails(changes)
     } else {
-      entry = CollectionEntryFactory.create(props.card, changes)
+      entry = InventoryFactory.create(props.card, changes)
     }
   } catch (error) {
     errorMessage.value =

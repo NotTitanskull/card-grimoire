@@ -9,16 +9,16 @@ import {
   serverTimestamp,
   updateDoc,
 } from 'firebase/firestore'
-import { CollectionEntryFactory } from '../factories/CollectionEntryFactory.js'
+import { InventoryFactory } from '../factories/InventoryFactory.js'
 import { db } from './firestore.js'
 
-/** @typedef {import('../models/CollectionEntry.js').CollectionEntry} CollectionEntry */
-/** @typedef {{id: string, entry: CollectionEntry, createdAt: import('firebase/firestore').Timestamp, updatedAt: import('firebase/firestore').Timestamp}} CollectionRecord */
+/** @typedef {import('../models/Inventory.js').Inventory} Inventory */
+/** @typedef {{id: string, entry: Inventory, createdAt: import('firebase/firestore').Timestamp, updatedAt: import('firebase/firestore').Timestamp}} CollectionRecord */
 
 /**
  * Saves a new collection entry under its owner's account.
  * @param {string} userId Firebase Authentication UID.
- * @param {CollectionEntry} entry Ownership details to save.
+ * @param {Inventory} entry Ownership details to save.
  * @returns {Promise<string>} Created document ID.
  * @throws {Error} If validation or the Firestore write fails.
  */
@@ -27,7 +27,7 @@ export async function createCollectionEntry(userId, entry) {
     throw new TypeError('A valid user ID is required.')
   }
 
-  const validated = CollectionEntryFactory.copy(entry)
+  const validated = InventoryFactory.copy(entry)
   const card = validated.card
 
   const data = {
@@ -55,7 +55,7 @@ export async function createCollectionEntry(userId, entry) {
     updatedAt: serverTimestamp(),
   }
 
-  const entries = collection(db, 'users', userId, 'collectionEntries')
+  const entries = collection(db, 'users', userId, 'inventory')
   const document = await addDoc(entries, data)
 
   return document.id
@@ -72,7 +72,7 @@ export async function getCollectionEntries(userId) {
     throw new TypeError('A valid user ID is required.')
   }
 
-  const entries = collection(db, 'users', userId, 'collectionEntries')
+  const entries = collection(db, 'users', userId, 'inventory')
   const entriesQuery = query(entries, orderBy('createdAt', 'desc'))
   const snapshot = await getDocs(entriesQuery)
 
@@ -81,7 +81,7 @@ export async function getCollectionEntries(userId) {
 
     return {
       id: document.id,
-      entry: CollectionEntryFactory.fromStoredData(data),
+      entry: InventoryFactory.fromStoredData(data),
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
     }
@@ -92,7 +92,7 @@ export async function getCollectionEntries(userId) {
  * Updates ownership details for an existing collection entry.
  * @param {string} userId Firebase Authentication UID.
  * @param {string} entryId Collection entry document ID.
- * @param {CollectionEntry} entry Validated ownership details.
+ * @param {Inventory} entry Validated ownership details.
  * @returns {Promise<void>}
  * @throws {Error} If validation or the Firestore update fails.
  */
@@ -103,8 +103,8 @@ export async function updateCollectionEntry(userId, entryId, entry) {
     }
   }
 
-  const validated = CollectionEntryFactory.copy(entry)
-  const reference = doc(db, 'users', userId, 'collectionEntries', entryId)
+  const validated = InventoryFactory.copy(entry)
+  const reference = doc(db, 'users', userId, 'inventory', entryId)
 
   await updateDoc(reference, {
     quantity: validated.quantity,
@@ -133,7 +133,7 @@ export async function deleteCollectionEntry(userId, entryId) {
     }
   }
 
-  const reference = doc(db, 'users', userId, 'collectionEntries', entryId)
+  const reference = doc(db, 'users', userId, 'inventory', entryId)
 
   await deleteDoc(reference)
 }

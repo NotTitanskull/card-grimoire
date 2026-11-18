@@ -5,8 +5,8 @@ import { markRaw, ref, isProxy } from 'vue'
 import { parse } from '@vue/compiler-sfc'
 import { Card } from '../src/models/Card.js'
 import { CardFactory } from '../src/factories/CardFactory.js'
-import { CollectionEntry } from '../src/models/CollectionEntry.js'
-import { CollectionEntryFactory } from '../src/factories/CollectionEntryFactory.js'
+import { Inventory } from '../src/models/Inventory.js'
+import { InventoryFactory } from '../src/factories/InventoryFactory.js'
 
 function storedEntry() {
   return {
@@ -50,18 +50,18 @@ function ownership(entry) {
 
 test('new entries choose a finish the printing actually offers', () => {
   const card = CardFactory.fromStoredData(storedEntry().card)
-  const entry = CollectionEntryFactory.create(card)
-  assert.ok(entry instanceof CollectionEntry)
+  const entry = InventoryFactory.create(card)
+  assert.ok(entry instanceof Inventory)
   assert.equal(entry.finish, 'foil')
   assert.equal(entry.quantity, 1)
   assert.equal(entry.purchasePriceMinor, null)
-  assert.throws(() => CollectionEntryFactory.create(card, { finish: 'nonfoil' }))
+  assert.throws(() => InventoryFactory.create(card, { finish: 'nonfoil' }))
 })
 
 test('existing document layout restores both models and preserves ownership values', () => {
   const data = storedEntry()
-  const entry = CollectionEntryFactory.fromStoredData(data)
-  assert.ok(entry instanceof CollectionEntry)
+  const entry = InventoryFactory.fromStoredData(data)
+  assert.ok(entry instanceof Inventory)
   assert.ok(entry.card instanceof Card)
   assert.deepEqual(ownership(entry), ownership(data))
   assert.deepEqual({ ...entry.card }, data.card)
@@ -75,15 +75,15 @@ test('incomplete and invalid saved entries fail instead of getting creation defa
   for (const field of Object.keys(storedEntry())) {
     const data = storedEntry()
     delete data[field]
-    assert.throws(() => CollectionEntryFactory.fromStoredData(data), TypeError)
+    assert.throws(() => InventoryFactory.fromStoredData(data), TypeError)
   }
-  assert.throws(() => CollectionEntryFactory.fromStoredData({ ...storedEntry(), quantity: -1 }))
-  assert.throws(() => CollectionEntryFactory.fromStoredData(null))
+  assert.throws(() => InventoryFactory.fromStoredData({ ...storedEntry(), quantity: -1 }))
+  assert.throws(() => InventoryFactory.fromStoredData(null))
 })
 
 test('editing copies keep valid and failed edits isolated from the original', () => {
-  const original = CollectionEntryFactory.fromStoredData(storedEntry())
-  const draft = CollectionEntryFactory.copy(original)
+  const original = InventoryFactory.fromStoredData(storedEntry())
+  const draft = InventoryFactory.copy(original)
   draft.updateDetails({ quantity: 5, favorite: true })
   assert.equal(original.quantity, 4)
   assert.equal(original.favorite, false)
@@ -100,17 +100,17 @@ test('editing copies keep valid and failed edits isolated from the original', ()
 })
 
 test('markRaw keeps restored private-field models usable inside Vue records', () => {
-  const entry = CollectionEntryFactory.fromStoredData(storedEntry())
+  const entry = InventoryFactory.fromStoredData(storedEntry())
   const records = ref([{ id: 'document-id', entry: markRaw(entry) }])
   const editing = ref(records.value[0])
   assert.equal(isProxy(editing.value.entry), false)
   assert.equal(editing.value.entry.quantity, 4)
-  assert.equal(CollectionEntryFactory.copy(editing.value.entry).quantity, 4)
+  assert.equal(InventoryFactory.copy(editing.value.entry).quantity, 4)
 })
 
 // Exercise the actual script-setup submit handler without a browser or database write.
 function form(initialEntry) {
-  const filename = new URL('../src/components/cards/CollectionEntryForm.vue', import.meta.url)
+  const filename = new URL('../src/components/cards/InventoryForm.vue', import.meta.url)
   const { descriptor } = parse(readFileSync(filename, 'utf8'))
   const script = descriptor.scriptSetup.content.replace(/^import .*$/gm, '')
   const events = []
@@ -123,8 +123,8 @@ function form(initialEntry) {
   const setup = new Function(
     'ref',
     'Card',
-    'CollectionEntry',
-    'CollectionEntryFactory',
+    'Inventory',
+    'InventoryFactory',
     'defineProps',
     'defineEmits',
     script + '\nreturn {quantity, purchasePrice, errorMessage, submitEntry}',
@@ -132,8 +132,8 @@ function form(initialEntry) {
   const state = setup(
     ref,
     Card,
-    CollectionEntry,
-    CollectionEntryFactory,
+    Inventory,
+    InventoryFactory,
     () => props,
     () =>
       (...args) =>
@@ -147,9 +147,9 @@ test('form emits a model for adding and an isolated updated model for editing', 
   add.quantity.value = 2
   add.purchasePrice.value = '4.10'
   add.submitEntry()
-  assert.ok(add.events[0][1] instanceof CollectionEntry)
+  assert.ok(add.events[0][1] instanceof Inventory)
   assert.equal(add.events[0][1].purchasePriceMinor, 410)
-  const original = CollectionEntryFactory.fromStoredData(storedEntry())
+  const original = InventoryFactory.fromStoredData(storedEntry())
   const edit = form(original)
   edit.quantity.value = 5
   edit.submitEntry()
@@ -159,7 +159,7 @@ test('form emits a model for adding and an isolated updated model for editing', 
 })
 
 test('form rejects invalid edits and blocks submissions while saving', () => {
-  const edit = form(CollectionEntryFactory.fromStoredData(storedEntry()))
+  const edit = form(InventoryFactory.fromStoredData(storedEntry()))
   edit.quantity.value = 2
   edit.submitEntry()
   assert.equal(edit.events.length, 0)
@@ -179,7 +179,7 @@ test('service writes the existing schema and restores models with separate metad
     deleted = false
   const timestamp = { seconds: 123 }
   const factory = new Function(
-    'CollectionEntryFactory',
+    'InventoryFactory',
     'db',
     'addDoc',
     'collection',
@@ -194,7 +194,7 @@ test('service writes the existing schema and restores models with separate metad
       '\nreturn {createCollectionEntry, getCollectionEntries, updateCollectionEntry, deleteCollectionEntry}',
   )
   const service = factory(
-    CollectionEntryFactory,
+    InventoryFactory,
     {},
     async (_reference, data) => {
       stored = data
@@ -220,9 +220,9 @@ test('service writes the existing schema and restores models with separate metad
     },
   )
 
-  const original = CollectionEntryFactory.fromStoredData(storedEntry())
+  const original = InventoryFactory.fromStoredData(storedEntry())
   assert.equal(await service.createCollectionEntry('owner', original), 'document-id')
-  assert.deepEqual(lastPath, ['users', 'owner', 'collectionEntries'])
+  assert.deepEqual(lastPath, ['users', 'owner', 'inventory'])
   assert.deepEqual(
     Object.keys(stored).sort(),
     [...Object.keys(storedEntry()), 'createdAt', 'updatedAt'].sort(),
@@ -230,16 +230,16 @@ test('service writes the existing schema and restores models with separate metad
   assert.equal(Object.getPrototypeOf(stored.card), Object.prototype)
   const [record] = await service.getCollectionEntries('owner')
   assert.equal(record.id, 'document-id')
-  assert.ok(record.entry instanceof CollectionEntry)
+  assert.ok(record.entry instanceof Inventory)
   assert.deepEqual(ownership(record.entry), ownership(original))
   assert.equal(record.createdAt, timestamp)
   assert.equal(record.entry.id, undefined)
 
-  const draft = CollectionEntryFactory.copy(record.entry)
+  const draft = InventoryFactory.copy(record.entry)
   draft.updateDetails({ quantity: 6 })
   const savedCard = stored.card
   await service.updateCollectionEntry('owner', record.id, draft)
-  assert.deepEqual(lastPath, ['users', 'owner', 'collectionEntries', 'document-id'])
+  assert.deepEqual(lastPath, ['users', 'owner', 'inventory', 'document-id'])
   assert.equal(stored.quantity, 6)
   assert.equal(stored.card, savedCard)
   assert.equal(record.entry.quantity, 4)
