@@ -100,6 +100,16 @@ service cloud.firestore {
       allow delete: if isOwner(userId);
     }
 
+    match /users/{userId}/binders/{binderId} {
+    allow read: if isOwner(userId);
+
+    allow create: if isOwner(userId)
+        && request.resource.data.keys().hasAll(['name', 'createdAt', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['name', 'createdAt', 'updatedAt'])
+        && isNonemptyString(request.resource.data.name)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
     match /{document=**} {
       allow read, write: if false;
     }

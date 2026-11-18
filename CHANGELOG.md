@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added binder creation and listing, with name validation and owner-only Firestore access.
 - Added automated checks for entry factories, isolated edits, Vue integration, and persistence serialization.
 - Added collection entry deletion with confirmation, error feedback, and owner-only Firestore permissions.
 - Added collection entry editing with prefilled ownership details and save feedback.
