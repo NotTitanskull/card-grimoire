@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Grouped Collection rows by printing and showed their combined copy and variant counts.
+- Reworked the Collection action menu into a desktop dialog and a mobile bottom sheet, with entry selection for printings that have multiple saved variants.
+- Guided Add Card through search, printing selection, and collection details, with clickable printing rows and visible finish choices.
+- Improved binder assignment controls with the current and maximum copy counts, a save action, and an explicit removal action.
+- Refined binder tiles and contents, and moved binder creation into a dedicated dialog.
+- Aligned Add card and New binder with their page headings on desktop and used floating add buttons on mobile.
+- Adjusted Collection and Binders loading placeholders to fit the available screen space, and lazy-loaded card thumbnails.
+- Documented trade draft types, the binder service, and card and binder dialog handoffs with JSDoc.
 - Moved collection row actions into a compact menu beside the quantity badge.
 - Replaced binder dropdowns with a card grid, matching loading skeletons, and a separate contents view.
 - Renamed the owned-card model, factory, and form to `Inventory`, `InventoryFactory`, and `InventoryForm`.
@@ -27,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added the Giving side of a trade draft with inventory search, variant selection, and quantity controls limited to copies outside binders.
+- Added local card-name search and A–Z or Z–A sorting to the Collection page.
+- Added a centered card details dialog with owned variants, an Add another action for the same printing, and an image preview that enlarges when tapped or clicked.
 - Added binder assignments from the Collection page, with Firestore validation that keeps assigned copies within the owned quantity.
 - Added binder creation and listing, with name validation and owner-only Firestore access.
 - Added automated checks for entry factories, isolated edits, Vue integration, and persistence serialization.

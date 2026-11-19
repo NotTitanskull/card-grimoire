@@ -20,11 +20,19 @@ const emit = defineEmits(['select', 'load-more'])
 <template>
   <section aria-label="Available card printings" :aria-busy="loading">
     <q-list v-if="printings.length" bordered separator>
-      <q-item v-for="printing in printings" :key="printing.scryfallId">
+      <q-item
+        v-for="printing in printings"
+        :key="printing.scryfallId"
+        clickable
+        :disable="loading"
+        :aria-label="`Choose ${printing.setName}, number ${printing.collectorNumber}`"
+        @click="emit('select', printing)"
+      >
         <q-item-section avatar>
           <q-img
             v-if="printing.imageUrl"
             :src="printing.imageUrl"
+            loading="lazy"
             alt=""
             width="48px"
             :ratio="5 / 7"
@@ -43,15 +51,7 @@ const emit = defineEmits(['select', 'load-more'])
         </q-item-section>
 
         <q-item-section side>
-          <q-btn
-            outline
-            no-caps
-            color="primary"
-            label="Choose"
-            :aria-label="`Choose ${printing.setName}, number ${printing.collectorNumber}`"
-            :disable="loading"
-            @click="emit('select', printing)"
-          />
+          <q-icon name="chevron_right" color="primary" aria-hidden="true" />
         </q-item-section>
       </q-item>
     </q-list>

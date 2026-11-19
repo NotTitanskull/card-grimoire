@@ -1,5 +1,5 @@
 <script setup>
-import { markRaw, onUnmounted, ref, watch } from 'vue'
+import { computed, markRaw, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useAuthStore } from '../stores/auth.js'
 import {
   createCollectionEntry,
@@ -9,9 +9,11 @@ import {
   saveBinderAssignment,
 } from '../services/collection.js'
 import AddCardDialog from '../components/cards/AddCardDialog.vue'
+import CardActionsDialog from '../components/cards/CardActionsDialog.vue'
 import { getCardPrintings, searchCards } from '../services/scryfall'
 import CardPrintingPicker from '../components/cards/CardPrintingPicker.vue'
 import InventoryForm from '../components/cards/InventoryForm.vue'
+import ResponsiveAddButton from '../components/layout/ResponsiveAddButton.vue'
 import { getBinders } from '../services/binders.js'
 
 const authStore = useAuthStore()
@@ -30,6 +32,8 @@ const printingsPage = ref(0)
 const printingsHaveMore = ref(false)
 const selectedPrinting = ref(null)
 const inventory = ref([])
+const collectionSearch = ref('')
+const collectionSort = ref('name-asc')
 const collectionLoading = ref(false)
 const collectionError = ref('')
 const editingEntry = ref(null)
@@ -47,11 +51,85 @@ const bindersLoading = ref(false)
 const binderLoadError = ref('')
 const binderSaving = ref(false)
 const binderSaveError = ref('')
+const cardActionsOpen = ref(false)
+const cardActionsRecord = shallowRef(null)
+const showCardDetails = ref(false)
+const preferredActionRecordId = ref(null)
+const returnToPrinting = ref(null)
 
 let binderRequestId = 0
 
 let collectionRequestId = 0
 let activeRequest = null
+
+const collectionSortOptions = [
+  { label: 'Name: A–Z', value: 'name-asc' },
+  { label: 'Name: Z–A', value: 'name-desc' },
+]
+const cardNameOrder = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
+
+const addCardStep = computed(() => {
+  if (returnToPrinting.value && selectedPrinting.value) return 'variant'
+  if (selectedPrinting.value) return 'details'
+  return selectedCard.value ? 'printing' : 'search'
+})
+
+const selectedBinderCopies = computed(
+  () => binderEntry.value?.entry.binderQuantities[selectedBinderId.value] ?? 0,
+)
+
+/** The selected binder can keep its current copies and take any unassigned copies. */
+const binderCopyLimit = computed(() => {
+  const entry = binderEntry.value?.entry
+  if (!entry) return 0
+
+  const assigned = Object.values(entry.binderQuantities).reduce(
+    (total, copies) => total + copies,
+    0,
+  )
+  return entry.quantity - assigned + selectedBinderCopies.value
+})
+
+/** Groups display rows by printing while keeping the individual records for edits. */
+const inventoryByPrinting = computed(() => {
+  const groups = new Map()
+
+  for (const record of inventory.value) {
+    const { card, condition, finish, quantity } = record.entry
+    if (!groups.has(card.scryfallId)) {
+      groups.set(card.scryfallId, {
+        card,
+        records: [],
+        copies: 0,
+        variants: new Set(),
+        favorite: false,
+        availableForTrade: false,
+      })
+    }
+
+    const group = groups.get(card.scryfallId)
+    group.records.push(record)
+    group.copies += quantity
+    group.variants.add(JSON.stringify([condition, finish]))
+    group.favorite ||= record.entry.favorite
+    group.availableForTrade ||= record.entry.availableForTrade
+  }
+
+  return groups
+})
+
+const visibleInventory = computed(() => {
+  const search = (collectionSearch.value ?? '').trim().toLocaleLowerCase()
+  const direction = collectionSort.value === 'name-desc' ? -1 : 1
+
+  return Array.from(inventoryByPrinting.value.values())
+    .filter(({ card }) => card.name.toLocaleLowerCase().includes(search))
+    .sort((a, b) => direction * cardNameOrder.compare(a.card.name, b.card.name))
+})
+
+const cardDialogGroup = computed(() =>
+  inventoryByPrinting.value.get(cardActionsRecord.value?.entry.card.scryfallId),
+)
 
 /**
  * Loads saved entries for the current user.
@@ -116,8 +194,8 @@ async function saveEntry(entry) {
   try {
     await createCollectionEntry(userId, entry)
     successMessage.value = `${entry.card.name} was added to your collection.`
-    dialogOpen.value = false
     await loadCollection()
+    dialogOpen.value = false
   } catch (error) {
     saveError.value =
       error.code === 'permission-denied'
@@ -289,6 +367,58 @@ function cancelSearch() {
 }
 
 /**
+ * Opens the printing overview or the action menu for its saved entries.
+ * @param {import('../services/collection.js').CollectionRecord} record Saved inventory entry.
+ * @param {'actions' | 'details'} [mode='actions'] Initial view shown in the dialog.
+ * @param {string | null} [preferredRecordId=null] Variant to preselect in the action menu.
+ */
+function openCardDialog(record, mode = 'actions', preferredRecordId = null) {
+  cardActionsRecord.value = record
+  showCardDetails.value = mode === 'details'
+  preferredActionRecordId.value = preferredRecordId
+  cardActionsOpen.value = true
+}
+
+/**
+ * Opens the next dialog after the card dialog finishes closing.
+ * @param {{ action: 'edit' | 'binder' | 'delete' | 'actions' | 'add', recordId: string | null } | null} choice
+ *   The action and optional variant ID, or null if dismissed.
+ */
+function handleCardAction(choice) {
+  const group = cardDialogGroup.value
+  const record = choice?.recordId
+    ? group?.records.find(({ id }) => id === choice.recordId)
+    : cardActionsRecord.value
+  cardActionsRecord.value = null
+  if (!choice || !record) return
+
+  if (choice.action === 'edit') openEditDialog(record)
+  if (choice.action === 'binder') void openBinderDialog(record)
+  if (choice.action === 'delete') openDeleteDialog(record)
+  if (choice.action === 'actions') openCardDialog(record, 'actions', record.id)
+  if (choice.action === 'add') {
+    returnToPrinting.value = record.entry.card.scryfallId
+    selectedPrinting.value = record.entry.card
+    dialogOpen.value = true
+  }
+}
+
+/** Restores the printing overview when Add another was opened from card details. */
+function closeAddCard() {
+  const printingId = returnToPrinting.value
+  returnToPrinting.value = null
+  backToResults()
+
+  const record = inventoryByPrinting.value.get(printingId)?.records[0]
+  if (record) openCardDialog(record, 'details')
+}
+
+function cancelInventoryForm() {
+  if (returnToPrinting.value) dialogOpen.value = false
+  else selectedPrinting.value = null
+}
+
+/**
  * Prepares a saved collection entry for editing.
  * @param {import('../services/collection.js').CollectionRecord} record Saved model and metadata.
  * @returns {void}
@@ -302,6 +432,11 @@ function openEditDialog(record) {
   editDialogOpen.value = true
 }
 
+/**
+ * Loads the signed-in account's binders and shows this entry's existing assignments.
+ * @param {import('../services/collection.js').CollectionRecord} record Entry to assign.
+ * @returns {Promise<void>}
+ */
 async function openBinderDialog(record) {
   const userId = authStore.user?.uid
   if (!userId || saving.value || deleting.value) return
@@ -320,10 +455,12 @@ async function openBinderDialog(record) {
     const binders = await getBinders(userId)
     if (requestId !== binderRequestId || authStore.user?.uid !== userId) return
 
-    binderOptions.value = binders.map(({ id, binder }) => ({
-      label: binder.name,
-      value: id,
-    }))
+    binderOptions.value = binders.map(({ id, binder }) => {
+      const copies = record.entry.binderQuantities[id] ?? 0
+      return { label: copies ? `${binder.name} · ${copies} assigned` : binder.name, value: id }
+    })
+
+    if (binderOptions.value.length === 1) selectBinder(binderOptions.value[0].value)
   } catch {
     if (requestId === binderRequestId) {
       binderLoadError.value = 'Could not load your binders.'
@@ -338,21 +475,31 @@ async function openBinderDialog(record) {
 function selectBinder(binderId) {
   binderSaveError.value = ''
   selectedBinderId.value = binderId
-  binderQuantity.value = binderEntry.value?.entry.binderQuantities[binderId] ?? 0
+  binderQuantity.value = selectedBinderCopies.value || (binderCopyLimit.value > 0 ? 1 : '')
 }
 
-async function submitBinderAssignment() {
+/**
+ * Saves the selected binder's copy count and reloads the collection after success.
+ * @param {boolean} [remove=false] Whether to clear the assignment by saving zero copies.
+ * @returns {Promise<void>}
+ */
+async function submitBinderAssignment(remove = false) {
   const userId = authStore.user?.uid
   const entryId = binderEntry.value?.id
   const binderId = selectedBinderId.value
-  const quantity = binderQuantity.value
+  const quantity = remove ? 0 : binderQuantity.value
 
   if (!userId || !entryId || !binderId || bindersLoading.value || binderSaving.value) return
 
   binderSaveError.value = ''
 
-  if (!Number.isSafeInteger(quantity) || quantity < 0) {
-    binderSaveError.value = 'Enter a whole number of copies, zero or greater.'
+  if (!remove && (!Number.isSafeInteger(quantity) || quantity < 1)) {
+    binderSaveError.value = 'Enter a whole number of copies, at least 1.'
+    return
+  }
+
+  if (!remove && quantity > binderCopyLimit.value) {
+    binderSaveError.value = `You can assign up to ${binderCopyLimit.value} copies to this binder.`
     return
   }
 
@@ -363,7 +510,8 @@ async function submitBinderAssignment() {
     if (authStore.user?.uid !== userId) return
 
     binderDialogOpen.value = false
-    successMessage.value = quantity === 0 ? 'Binder assignment removed.' : 'Binder assignment saved.'
+    successMessage.value =
+      quantity === 0 ? 'Binder assignment removed.' : 'Binder assignment saved.'
     await loadCollection()
   } catch (error) {
     if (authStore.user?.uid !== userId) return
@@ -429,9 +577,14 @@ watch(
   () => authStore.user?.uid,
   () => {
     inventory.value = []
+    collectionSearch.value = ''
+    collectionSort.value = 'name-asc'
     binderRequestId += 1
     binderDialogOpen.value = false
     binderEntry.value = null
+    cardActionsOpen.value = false
+    cardActionsRecord.value = null
+    returnToPrinting.value = null
     successMessage.value = ''
     void loadCollection()
   },
@@ -443,9 +596,7 @@ watch(selectedPrinting, () => {
 })
 
 watch(dialogOpen, (isOpen) => {
-  if (!isOpen) {
-    backToResults()
-  }
+  if (!isOpen) cancelSearch()
 })
 
 watch(editDialogOpen, (isOpen) => {
@@ -470,11 +621,13 @@ onUnmounted(() => {
 
 <template>
   <section>
-    <h1 class="text-h4 text-weight-bold q-mt-none q-mb-sm">My Collection</h1>
-
-    <p>Browse and manage every card in your collection.</p>
-
-    <q-btn color="primary" icon="add" label="Add card" no-caps @click="dialogOpen = true" />
+    <header class="collection-page-header">
+      <div>
+        <h1 class="text-h4 text-weight-bold q-mt-none q-mb-sm">My Collection</h1>
+        <p class="q-mb-none">Browse and manage every card in your collection.</p>
+      </div>
+      <ResponsiveAddButton label="Add card" @click="dialogOpen = true" />
+    </header>
 
     <q-banner
       v-if="successMessage"
@@ -484,8 +637,34 @@ onUnmounted(() => {
       {{ successMessage }}
     </q-banner>
     <div class="q-mt-lg" :aria-busy="collectionLoading">
-      <div v-if="collectionLoading" role="status" aria-label="Loading collection">
-        <q-skeleton v-for="item in 3" :key="item" type="rect" height="88px" class="q-mb-sm" />
+      <div v-if="inventory.length && !collectionError" class="row q-col-gutter-sm q-mb-md">
+        <div class="col-12 col-sm-8">
+          <q-input v-model="collectionSearch" label="Search cards" type="search" dense outlined>
+            <template #prepend>
+              <q-icon name="search" />
+            </template>
+          </q-input>
+        </div>
+        <div class="col-12 col-sm-4">
+          <q-select
+            v-model="collectionSort"
+            :options="collectionSortOptions"
+            label="Sort by"
+            dense
+            outlined
+            emit-value
+            map-options
+          />
+        </div>
+      </div>
+
+      <div
+        v-if="collectionLoading"
+        class="collection-skeletons"
+        role="status"
+        aria-label="Loading collection"
+      >
+        <q-skeleton v-for="item in 5" :key="item" type="rect" height="88px" aria-hidden="true" />
       </div>
 
       <q-banner
@@ -500,82 +679,92 @@ onUnmounted(() => {
         </template>
       </q-banner>
 
-      <q-list v-else-if="inventory.length" bordered separator>
-        <q-item v-for="record in inventory" :key="record.id">
-          <q-item-section avatar>
-            <q-img
-              v-if="record.entry.card.imageUrl"
-              :src="record.entry.card.imageUrl"
+      <q-list v-else-if="visibleInventory.length" bordered separator>
+        <q-item v-for="group in visibleInventory" :key="group.card.scryfallId">
+          <button
+            type="button"
+            class="collection-card-row"
+            aria-haspopup="dialog"
+            :aria-label="`View details for ${group.card.name}, ${group.card.setName}, number ${group.card.collectorNumber}`"
+            :disabled="saving || deleting || binderSaving"
+            @click="openCardDialog(group.records[0], 'details')"
+          >
+            <img
+              v-if="group.card.imageUrl"
+              :src="group.card.imageUrl"
+              class="collection-card-thumbnail"
+              width="48"
+              height="67"
+              loading="lazy"
               alt=""
-              width="48px"
-              :ratio="5 / 7"
             />
-            <q-icon v-else name="image_not_supported" size="32px" />
-          </q-item-section>
+            <q-icon v-else name="image_not_supported" size="32px" aria-hidden="true" />
 
-          <q-item-section>
-            <q-item-label>{{ record.entry.card.name }}</q-item-label>
-
-            <q-item-label caption>
-              {{ record.entry.card.setName }} · #{{ record.entry.card.collectorNumber }}
-            </q-item-label>
-
-            <q-item-label caption>
-              {{ record.entry.condition }} · {{ record.entry.finish }}
-            </q-item-label>
-
-            <q-item-label v-if="record.entry.favorite || record.entry.availableForTrade" caption>
-              <span v-if="record.entry.favorite">Favorite</span>
-              <span v-if="record.entry.favorite && record.entry.availableForTrade"> · </span>
-              <span v-if="record.entry.availableForTrade">Available for trade</span>
-            </q-item-label>
-          </q-item-section>
+            <span class="collection-card-summary">
+              <span class="collection-card-title">{{ group.card.name }}</span>
+              <span class="text-caption text-grey-7">
+                {{ group.card.setName }} · #{{ group.card.collectorNumber }}
+              </span>
+              <span v-if="group.variants.size > 1" class="text-caption text-grey-7">
+                {{ group.variants.size }} variants
+              </span>
+              <span v-else class="text-caption text-grey-7">
+                {{ group.records[0].entry.condition }} · {{ group.records[0].entry.finish }}
+              </span>
+              <span
+                v-if="group.favorite || group.availableForTrade"
+                class="text-caption text-grey-7"
+              >
+                <span v-if="group.favorite">Favorite</span>
+                <span v-if="group.favorite && group.availableForTrade"> · </span>
+                <span v-if="group.availableForTrade">Available for trade</span>
+              </span>
+            </span>
+          </button>
 
           <q-item-section side>
             <div class="row items-center no-wrap q-gutter-x-xs">
-              <q-badge color="primary" :label="`Qty: ${record.entry.quantity}`" />
-              <q-btn-dropdown
+              <q-badge color="primary" :label="`Qty: ${group.copies}`" />
+              <q-btn
                 flat
+                round
                 dense
-                dropdown-icon="more_vert"
-                no-icon-animation
-                :toggle-aria-label="`Actions for ${record.entry.card.name}`"
+                icon="more_vert"
+                aria-haspopup="dialog"
+                :aria-label="`Actions for ${group.card.name}`"
                 :disable="saving || deleting || binderSaving"
-              >
-                <q-list>
-                  <q-item v-close-popup clickable @click="openEditDialog(record)">
-                    <q-item-section side><q-icon name="edit" size="20px" /></q-item-section>
-                    <q-item-section>Edit</q-item-section>
-                  </q-item>
-                  <q-item v-close-popup clickable @click="openBinderDialog(record)">
-                    <q-item-section side><q-icon name="book" size="20px" /></q-item-section>
-                    <q-item-section>Assign to binder</q-item-section>
-                  </q-item>
-                  <q-separator />
-                  <q-item
-                    v-close-popup
-                    clickable
-                    class="text-negative"
-                    @click="openDeleteDialog(record)"
-                  >
-                    <q-item-section side>
-                      <q-icon name="delete" color="negative" size="20px" />
-                    </q-item-section>
-                    <q-item-section>Delete</q-item-section>
-                  </q-item>
-                </q-list>
-              </q-btn-dropdown>
+                @click="openCardDialog(group.records[0])"
+              />
             </div>
           </q-item-section>
         </q-item>
       </q-list>
 
+      <p v-else-if="inventory.length" role="status">No cards match your search.</p>
       <p v-else role="status">Your collection is empty. Add a card to get started.</p>
     </div>
-    <q-dialog v-model="binderDialogOpen" :persistent="binderSaving">
-      <q-card v-if="binderEntry">
+    <CardActionsDialog
+      v-model="cardActionsOpen"
+      :entry="cardActionsRecord?.entry"
+      :records="cardDialogGroup?.records ?? []"
+      :copies="cardDialogGroup?.copies ?? 0"
+      :variant-count="cardDialogGroup?.variants.size ?? 0"
+      :preferred-record-id="preferredActionRecordId"
+      :show-details="showCardDetails"
+      @closed="handleCardAction"
+    />
+
+    <q-dialog
+      v-model="binderDialogOpen"
+      :persistent="binderSaving"
+      aria-labelledby="binder-assignment-title"
+    >
+      <q-card v-if="binderEntry" class="binder-assignment-dialog">
         <q-card-section>
-          <h2 class="text-h6 q-my-none">Assign {{ binderEntry.entry.card.name }} to a binder</h2>
+          <h2 id="binder-assignment-title" class="text-h6 q-my-none">Assign to binder</h2>
+          <p class="text-grey-7 q-mb-none">
+            {{ binderEntry.entry.card.name }} · {{ binderEntry.entry.quantity }} owned
+          </p>
         </q-card-section>
 
         <q-card-section class="q-gutter-md">
@@ -600,12 +789,14 @@ onUnmounted(() => {
               v-if="selectedBinderId"
               v-model.number="binderQuantity"
               type="number"
-              min="0"
+              min="1"
+              :max="binderCopyLimit"
               step="1"
               label="Assigned copies"
-              hint="Enter 0 to remove the assignment"
+              :hint="`You can assign up to ${binderCopyLimit} to this binder.`"
               outlined
               :disable="binderSaving"
+              @keyup.enter="submitBinderAssignment()"
             />
           </template>
 
@@ -614,15 +805,25 @@ onUnmounted(() => {
           </p>
         </q-card-section>
 
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat no-caps label="Close" :disable="binderSaving" />
+        <q-card-actions class="q-gutter-xs">
+          <q-btn
+            v-if="selectedBinderCopies > 0"
+            flat
+            no-caps
+            color="negative"
+            label="Remove assignment"
+            :disable="binderSaving"
+            @click="submitBinderAssignment(true)"
+          />
+          <q-space />
+          <q-btn v-close-popup flat no-caps label="Cancel" :disable="binderSaving" />
           <q-btn
             color="primary"
             no-caps
-            label="Save"
+            label="Save assignment"
             :loading="binderSaving"
-            :disable="!selectedBinderId || bindersLoading"
-            @click="submitBinderAssignment"
+            :disable="!selectedBinderId || bindersLoading || binderCopyLimit === 0"
+            @click="submitBinderAssignment()"
           />
         </q-card-actions>
       </q-card>
@@ -631,17 +832,19 @@ onUnmounted(() => {
       v-model="dialogOpen"
       :loading="loading"
       :saving="saving"
-      :show-search="!selectedPrinting"
+      :step="addCardStep"
       @search="handleSearch"
+      @hide="closeAddCard"
     >
       <InventoryForm
         v-if="selectedPrinting"
         :key="selectedPrinting.scryfallId"
         :card="selectedPrinting"
+        :cancel-label="returnToPrinting ? 'Back to card details' : ''"
         :saving="saving"
         :save-error="saveError"
         @submit="saveEntry"
-        @cancel="selectedPrinting = null"
+        @cancel="cancelInventoryForm"
       />
 
       <template v-else-if="selectedCard">
@@ -654,7 +857,7 @@ onUnmounted(() => {
           @click="backToResults"
         />
 
-        <h2 class="text-h6 q-mt-none q-mb-md">Choose a printing of {{ selectedCard.name }}</h2>
+        <p class="text-weight-medium q-mb-md">{{ selectedCard.name }}</p>
 
         <q-banner
           v-if="errorMessage"
@@ -816,12 +1019,84 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="scss">
+.collection-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.collection-card-row {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.25rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+
+  &:hover,
+  &:focus-visible {
+    background-color: color-mix(in srgb, var(--q-primary) 6%, transparent);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+.collection-card-thumbnail {
+  flex-shrink: 0;
+  border-radius: 0.25rem;
+  object-fit: contain;
+}
+
+.collection-card-summary {
+  display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.collection-card-title {
+  color: var(--q-primary);
+  font-weight: 600;
+}
+
+.collection-skeletons {
+  display: grid;
+  gap: 0.5rem;
+
+  > :nth-child(n + 4) {
+    display: none;
+  }
+
+  @media (min-width: 768px) and (min-height: 700px) {
+    > :nth-child(4) {
+      display: block;
+    }
+  }
+
+  @media (min-width: 768px) and (min-height: 1000px) {
+    > :nth-child(5) {
+      display: block;
+    }
+  }
+}
+
 .edit-entry-dialog {
   width: 40rem;
   max-width: calc(100vw - 2rem);
 }
 
-.delete-entry-dialog {
+.delete-entry-dialog,
+.binder-assignment-dialog {
   width: 32rem;
   max-width: calc(100vw - 2rem);
 }

@@ -73,12 +73,14 @@ async function handleLogout() {
 
 <style scoped lang="scss">
 .app-layout {
+  --mobile-nav-clearance: calc(5rem + env(safe-area-inset-bottom, 0px));
+
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
   color: #212529;
   background-color: #f5f7fb;
-  padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  padding-bottom: var(--mobile-nav-clearance);
 
   @media (min-width: 768px) {
     padding-bottom: 0;

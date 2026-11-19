@@ -21,11 +21,13 @@ const props = defineProps({
     type: Inventory,
     default: null,
   },
+  cancelLabel: { type: String, default: '' },
 })
 
 const emit = defineEmits(['submit', 'cancel'])
 
 const conditions = ['Near Mint', 'Lightly Played', 'Moderately Played', 'Heavily Played', 'Damaged']
+const finishLabels = { nonfoil: 'Nonfoil', foil: 'Foil', etched: 'Etched' }
 
 const quantity = ref(props.initialEntry?.quantity ?? 1)
 const condition = ref(props.initialEntry?.condition ?? 'Near Mint')
@@ -137,14 +139,20 @@ function submitEntry() {
       :options="conditions"
     />
 
-    <q-select
-      :disable="saving"
-      v-model="finish"
-      outlined
-      hide-bottom-space
-      label="Finish"
-      :options="card.finishes"
-    />
+    <fieldset v-if="card.finishes.length > 1" class="q-pa-sm rounded-borders finish-options">
+      <legend class="q-px-xs">Finish</legend>
+      <div class="row q-col-gutter-sm">
+        <q-radio
+          v-for="option in card.finishes"
+          :key="option"
+          v-model="finish"
+          :val="option"
+          :label="finishLabels[option] ?? option"
+          :disable="saving"
+        />
+      </div>
+    </fieldset>
+    <p v-else class="q-mb-none">Finish: {{ finishLabels[finish] ?? finish }}</p>
 
     <q-input
       v-model="purchasePrice"
@@ -167,7 +175,7 @@ function submitEntry() {
         :disable="saving"
         flat
         no-caps
-        :label="initialEntry ? 'Cancel' : 'Back to printings'"
+        :label="cancelLabel || (initialEntry ? 'Cancel' : 'Back to printings')"
         @click="emit('cancel')"
       />
 
@@ -183,4 +191,9 @@ function submitEntry() {
   </q-form>
 </template>
 
-<style scoped></style>
+<style scoped>
+.finish-options {
+  min-width: 0;
+  border: 1px solid #dfe5ef;
+}
+</style>

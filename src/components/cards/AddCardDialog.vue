@@ -1,7 +1,8 @@
 <script setup>
+import { computed } from 'vue'
 import CardSearch from './CardSearch.vue'
 
-defineProps({
+const props = defineProps({
   modelValue: {
     type: Boolean,
     default: false,
@@ -10,9 +11,9 @@ defineProps({
     type: Boolean,
     default: false,
   },
-  showSearch: {
-    type: Boolean,
-    default: true,
+  step: {
+    type: String,
+    default: 'search',
   },
   loading: {
     type: Boolean,
@@ -20,7 +21,15 @@ defineProps({
   },
 })
 
-const emit = defineEmits(['update:modelValue', 'search'])
+const emit = defineEmits(['update:modelValue', 'search', 'hide'])
+
+const steps = {
+  search: { number: 1, title: 'Find a card' },
+  printing: { number: 2, title: 'Choose a printing' },
+  details: { number: 3, title: 'Set collection details' },
+  variant: { number: null, title: 'Add another variant' },
+}
+const currentStep = computed(() => steps[props.step] ?? steps.search)
 </script>
 
 <template>
@@ -29,10 +38,16 @@ const emit = defineEmits(['update:modelValue', 'search'])
     :persistent="saving"
     aria-labelledby="add-card-title"
     @update:model-value="emit('update:modelValue', $event)"
+    @hide="emit('hide')"
   >
     <q-card class="add-card-dialog">
       <q-card-section class="row items-center">
-        <h2 id="add-card-title" class="text-h6 q-ma-none">Add a card</h2>
+        <div>
+          <p v-if="currentStep.number" class="text-caption text-grey-7 q-mb-none">
+            Add a card · Step {{ currentStep.number }} of 3
+          </p>
+          <h2 id="add-card-title" class="text-h6 q-ma-none">{{ currentStep.title }}</h2>
+        </div>
 
         <q-space />
 
@@ -49,7 +64,7 @@ const emit = defineEmits(['update:modelValue', 'search'])
 
       <q-separator />
 
-      <q-card-section v-if="showSearch">
+      <q-card-section v-show="step === 'search'">
         <CardSearch :loading="loading" @search="emit('search', $event)" />
       </q-card-section>
 
