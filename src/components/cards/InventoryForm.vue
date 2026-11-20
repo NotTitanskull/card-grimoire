@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { Card } from '@/models/Card.js'
+import { CARD_CONDITIONS } from '@/models/cardConditions.js'
 import { Inventory } from '@/models/Inventory.js'
 import { InventoryFactory } from '@/factories/InventoryFactory.js'
 
@@ -26,7 +27,6 @@ const props = defineProps({
 
 const emit = defineEmits(['submit', 'cancel'])
 
-const conditions = ['Near Mint', 'Lightly Played', 'Moderately Played', 'Heavily Played', 'Damaged']
 const finishLabels = { nonfoil: 'Nonfoil', foil: 'Foil', etched: 'Etched' }
 
 const quantity = ref(props.initialEntry?.quantity ?? 1)
@@ -136,7 +136,7 @@ function submitEntry() {
       outlined
       hide-bottom-space
       label="Condition"
-      :options="conditions"
+      :options="CARD_CONDITIONS"
     />
 
     <fieldset v-if="card.finishes.length > 1" class="q-pa-sm rounded-borders finish-options">

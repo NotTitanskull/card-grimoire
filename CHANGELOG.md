@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Arranged Trade into side-by-side Giving and Receiving panels on desktop and stacked panels on mobile.
+- Reused card search, printing pagination, and cancellation between Collection and Trade.
+- Shared card condition choices and Firestore inventory document formatting across the forms and services that use them.
 - Grouped Collection rows by printing and showed their combined copy and variant counts.
 - Reworked the Collection action menu into a desktop dialog and a mobile bottom sheet, with entry selection for printings that have multiple saved variants.
 - Guided Add Card through search, printing selection, and collection details, with clickable printing rows and visible finish choices.
@@ -35,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added the Receiving side of a trade draft with Scryfall printing selection and condition, finish, and quantity controls.
+- Added estimated USD prices per copy and per side, with a value difference when both sides have complete pricing.
+- Added a review and confirmation flow that updates inventory and saves an owner-only trade record in one Firestore transaction. Confirmation retries reuse the same trade ID, and outgoing copies assigned to binders are protected.
+- Added automated checks for card lookup pagination and cancellation.
 - Added the Giving side of a trade draft with inventory search, variant selection, and quantity controls limited to copies outside binders.
 - Added local card-name search and A–Z or Z–A sorting to the Collection page.
 - Added a centered card details dialog with owned variants, an Add another action for the same printing, and an image preview that enlarges when tapped or clicked.

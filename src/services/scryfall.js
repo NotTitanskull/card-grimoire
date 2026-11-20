@@ -84,3 +84,55 @@ export async function getCardPrintings(oracleId, { page = 1, signal } = {}) {
     unique: 'prints',
   })
 }
+
+/**
+ * Converts a Scryfall USD price string into cents.
+ * @param {string|null|undefined} value
+ * @returns {number|null}
+ */
+function parseUsdPrice(value) {
+  if (typeof value !== 'string' || !/^\d+(?:\.\d{1,2})?$/.test(value)) {
+    return null
+  }
+
+  const cents = Math.round(Number(value) * 100)
+  return Number.isSafeInteger(cents) ? cents : null
+}
+
+/**
+ * Loads USD market prices for up to 75 distinct Scryfall printing IDs.
+ * @param {string[]} printingIds
+ * @param {{ signal?: AbortSignal }} [options]
+ * @returns {Promise<Map<string, { nonfoil: number|null, foil: number|null, etched: number|null }>>}
+ */
+export async function getPrintingPrices(printingIds, { signal } = {}) {
+  const ids = [...new Set(printingIds)]
+  if (ids.length === 0) return new Map()
+  if (ids.length > 75) throw new RangeError('Request up to 75 printings at a time.')
+
+  const response = await fetch(`${API_BASE_URL}/cards/collection`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ identifiers: ids.map((id) => ({ id })) }),
+    signal,
+  })
+
+  if (!response.ok) {
+    throw new Error(`Could not load market prices (${response.status}).`)
+  }
+
+  const { data } = await response.json()
+  return new Map(
+    data.map(({ id, prices }) => [
+      id,
+      {
+        nonfoil: parseUsdPrice(prices?.usd),
+        foil: parseUsdPrice(prices?.usd_foil),
+        etched: parseUsdPrice(prices?.usd_etched),
+      },
+    ]),
+  )
+}

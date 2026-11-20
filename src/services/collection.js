@@ -16,21 +16,14 @@ import { db } from './firestore.js'
 /** @typedef {{id: string, entry: Inventory, createdAt: import('firebase/firestore').Timestamp, updatedAt: import('firebase/firestore').Timestamp}} CollectionRecord */
 
 /**
- * Saves a new collection entry under its owner's account.
- * @param {string} userId Firebase Authentication UID.
- * @param {Inventory} entry Ownership details to save.
- * @returns {Promise<string>} Created document ID.
- * @throws {Error} If validation or the Firestore write fails.
+ * Builds the Firestore document for a new inventory entry.
+ * @param {Inventory} entry Inventory entry to serialize.
  */
-export async function createCollectionEntry(userId, entry) {
-  if (typeof userId !== 'string' || userId.trim() === '' || userId.includes('/')) {
-    throw new TypeError('A valid user ID is required.')
-  }
-
+export function serializeNewInventoryEntry(entry) {
   const validated = InventoryFactory.copy(entry)
   const card = validated.card
 
-  const data = {
+  return {
     card: {
       scryfallId: card.scryfallId,
       oracleId: card.oracleId,
@@ -54,7 +47,21 @@ export async function createCollectionEntry(userId, entry) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   }
+}
 
+/**
+ * Saves a new collection entry under its owner's account.
+ * @param {string} userId Firebase Authentication UID.
+ * @param {Inventory} entry Ownership details to save.
+ * @returns {Promise<string>} Created document ID.
+ * @throws {Error} If validation or the Firestore write fails.
+ */
+export async function createCollectionEntry(userId, entry) {
+  if (typeof userId !== 'string' || userId.trim() === '' || userId.includes('/')) {
+    throw new TypeError('A valid user ID is required.')
+  }
+
+  const data = serializeNewInventoryEntry(entry)
   const entries = collection(db, 'users', userId, 'inventory')
   const document = await addDoc(entries, data)
 

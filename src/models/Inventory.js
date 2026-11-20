@@ -1,6 +1,5 @@
 import { Card } from './Card.js'
-
-const CONDITIONS = ['Near Mint', 'Lightly Played', 'Moderately Played', 'Heavily Played', 'Damaged']
+import { CARD_CONDITIONS } from './cardConditions.js'
 
 const FINISHES = ['nonfoil', 'foil', 'etched']
 
@@ -45,7 +44,7 @@ export class Inventory {
       throw new TypeError('Quantity must be a positive safe integer.')
     }
 
-    if (!CONDITIONS.includes(condition)) {
+    if (!CARD_CONDITIONS.includes(condition)) {
       throw new TypeError('Unsupported card condition.')
     }
 

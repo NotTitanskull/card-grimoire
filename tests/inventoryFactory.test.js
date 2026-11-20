@@ -173,7 +173,7 @@ test('form rejects invalid edits and blocks submissions while saving', () => {
 test('service writes the existing schema and restores models with separate metadata', async () => {
   const source = readFileSync(new URL('../src/services/collection.js', import.meta.url), 'utf8')
     .replace(/^import[\s\S]*?from ['"][^'"]+['"]\n/gm, '')
-    .replace(/export async function/g, 'async function')
+    .replace(/^export (?=(?:async )?function )/gm, '')
   let stored,
     lastPath,
     deleted = false

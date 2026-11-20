@@ -164,6 +164,25 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
     }
+    match /users/{userId}/trades/{tradeId} {
+      allow read: if isOwner(userId);
+
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasAll([
+          'given', 'received', 'completedAt', 'createdAt', 'currency'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'given', 'received', 'completedAt', 'createdAt', 'currency', 'notes'
+        ])
+        && request.resource.data.given is list
+        && request.resource.data.given.size() > 0
+        && request.resource.data.received is list
+        && request.resource.data.received.size() > 0
+        && request.resource.data.currency == 'USD'
+        && request.resource.data.completedAt == request.time
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.get('notes', '') is string;
+    }
     match /{document=**} {
       allow read, write: if false;
     }
