@@ -174,15 +174,9 @@ export async function saveBinderAssignment(userId, entryId, binderId, quantity) 
       }
     }
 
-    const binderQuantities = entry.binderQuantities
-    const assignedQuantity = Object.values(binderQuantities).reduce(
-      (total, copies) => total + copies,
-      0,
-    )
-
     transaction.update(entryRef, {
-      binderQuantities,
-      assignedQuantity,
+      binderQuantities: entry.binderQuantities,
+      assignedQuantity: entry.assignedQuantity,
       lastBinderId: binderId,
       updatedAt: serverTimestamp(),
     })

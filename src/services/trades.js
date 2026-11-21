@@ -1,4 +1,12 @@
-import { collection, doc, runTransaction, serverTimestamp } from 'firebase/firestore'
+import {
+  collection,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+  runTransaction,
+  serverTimestamp,
+} from 'firebase/firestore'
 import { InventoryFactory } from '../factories/InventoryFactory.js'
 import { serializeNewInventoryEntry } from './collection.js'
 import { db } from './firestore.js'
@@ -87,13 +95,9 @@ export async function completeTrade(userId, tradeId, { giving, receiving }) {
         )
       }
 
-      const assigned = Object.values(entry.binderQuantities).reduce(
-        (total, copies) => total + copies,
-        0,
-      )
       const remaining = entry.quantity - line.quantity
 
-      if (remaining < assigned) {
+      if (line.quantity > entry.unassignedQuantity) {
         throw new TradeConflictError(
           `There are no longer enough copies of ${line.name} outside binders.`,
         )
@@ -121,4 +125,22 @@ export async function completeTrade(userId, tradeId, { giving, receiving }) {
 
     return tradeId
   })
+}
+
+/**
+ * Loads the signed-in user's completed trades, most recent first.
+ * @param {string} userId Firebase Authentication UID.
+ */
+export async function getTradeHistory(userId) {
+  if (!isDocumentId(userId)) {
+    throw new TypeError('A valid user ID is required.')
+  }
+
+  const trades = collection(db, 'users', userId, 'trades')
+  const snapshot = await getDocs(query(trades, orderBy('completedAt', 'desc')))
+
+  return snapshot.docs.map((document) => ({
+    ...document.data(),
+    id: document.id,
+  }))
 }

@@ -14,7 +14,7 @@ const loading = ref(true)
 const saving = ref(false)
 const loadError = ref('')
 const saveError = ref('')
-const activeBinderId = ref(null)
+const activeBinderId = ref(/** @type {string | null} */ (null))
 const createDialogOpen = ref(false)
 
 /** Indexes assigned copies by binder ID so one inventory entry can appear in several binders. */

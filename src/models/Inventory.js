@@ -160,6 +160,17 @@ export class Inventory {
     return { ...this.#details.binderQuantities }
   }
 
+  get assignedQuantity() {
+    return Object.values(this.#details.binderQuantities).reduce(
+      (total, copies) => total + copies,
+      0,
+    )
+  }
+
+  get unassignedQuantity() {
+    return this.quantity - this.assignedQuantity
+  }
+
   /**
    * Sets the number of copies assigned to a binder.
    * @param {string} binderId Firestore document ID of the binder.

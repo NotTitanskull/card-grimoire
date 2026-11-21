@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { observeAuthState } from '../services/auth'
 
 export const useAuthStore = defineStore('auth', () => {
+  /** @type {import('vue').Ref<{ uid: string, email: string | null, displayName: string | null } | null>} */
   const user = ref(null)
   const initialized = ref(false)
 

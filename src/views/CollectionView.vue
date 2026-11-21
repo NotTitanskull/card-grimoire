@@ -6,15 +6,16 @@ import {
   deleteCollectionEntry,
   getCollectionEntries,
   updateCollectionEntry,
-  saveBinderAssignment,
 } from '../services/collection.js'
 import AddCardDialog from '../components/cards/AddCardDialog.vue'
+import BinderAssignmentDialog from '../components/cards/BinderAssignmentDialog.vue'
 import CardActionsDialog from '../components/cards/CardActionsDialog.vue'
 import { useCardLookup } from '../composables/useCardLookup.js'
 import CardPrintingPicker from '../components/cards/CardPrintingPicker.vue'
 import InventoryForm from '../components/cards/InventoryForm.vue'
 import ResponsiveAddButton from '../components/layout/ResponsiveAddButton.vue'
-import { getBinders } from '../services/binders.js'
+
+/** @typedef {import('../services/collection.js').CollectionRecord} CollectionRecord */
 
 const authStore = useAuthStore()
 const saving = ref(false)
@@ -22,6 +23,7 @@ const saveError = ref('')
 const successMessage = ref('')
 const dialogOpen = ref(false)
 const selectedPrinting = ref(null)
+/** @type {import('vue').Ref<CollectionRecord[]>} */
 const inventory = ref([])
 const collectionSearch = ref('')
 const collectionSort = ref('name-asc')
@@ -34,21 +36,13 @@ const deleteDialogOpen = ref(false)
 const deleting = ref(false)
 const deleteError = ref('')
 const binderDialogOpen = ref(false)
-const binderEntry = ref(null)
-const binderOptions = ref([])
-const selectedBinderId = ref(null)
-const binderQuantity = ref(0)
-const bindersLoading = ref(false)
-const binderLoadError = ref('')
+const binderEntry = ref(/** @type {CollectionRecord | null} */ (null))
 const binderSaving = ref(false)
-const binderSaveError = ref('')
 const cardActionsOpen = ref(false)
 const cardActionsRecord = shallowRef(null)
 const showCardDetails = ref(false)
 const preferredActionRecordId = ref(null)
 const returnToPrinting = ref(null)
-
-let binderRequestId = 0
 
 let collectionRequestId = 0
 
@@ -78,22 +72,6 @@ const addCardStep = computed(() => {
   if (returnToPrinting.value && selectedPrinting.value) return 'variant'
   if (selectedPrinting.value) return 'details'
   return selectedCard.value ? 'printing' : 'search'
-})
-
-const selectedBinderCopies = computed(
-  () => binderEntry.value?.entry.binderQuantities[selectedBinderId.value] ?? 0,
-)
-
-/** The selected binder can keep its current copies and take any unassigned copies. */
-const binderCopyLimit = computed(() => {
-  const entry = binderEntry.value?.entry
-  if (!entry) return 0
-
-  const assigned = Object.values(entry.binderQuantities).reduce(
-    (total, copies) => total + copies,
-    0,
-  )
-  return entry.quantity - assigned + selectedBinderCopies.value
 })
 
 /** Groups display rows by printing while keeping the individual records for edits. */
@@ -290,7 +268,7 @@ function handleCardAction(choice) {
   if (!choice || !record) return
 
   if (choice.action === 'edit') openEditDialog(record)
-  if (choice.action === 'binder') void openBinderDialog(record)
+  if (choice.action === 'binder') openBinderDialog(record)
   if (choice.action === 'delete') openDeleteDialog(record)
   if (choice.action === 'actions') openCardDialog(record, 'actions', record.id)
   if (choice.action === 'add') {
@@ -330,95 +308,20 @@ function openEditDialog(record) {
 }
 
 /**
- * Loads the signed-in account's binders and shows this entry's existing assignments.
- * @param {import('../services/collection.js').CollectionRecord} record Entry to assign.
- * @returns {Promise<void>}
+ * Opens the binder assignment dialog for a saved inventory record.
+ * @param {CollectionRecord} record Entry to assign.
  */
-async function openBinderDialog(record) {
-  const userId = authStore.user?.uid
-  if (!userId || saving.value || deleting.value) return
+function openBinderDialog(record) {
+  if (!authStore.user?.uid || saving.value || deleting.value || binderSaving.value) return
 
-  const requestId = ++binderRequestId
   binderEntry.value = record
-  binderOptions.value = []
-  selectedBinderId.value = null
-  binderQuantity.value = 0
-  binderLoadError.value = ''
-  binderSaveError.value = ''
-  bindersLoading.value = true
   binderDialogOpen.value = true
-
-  try {
-    const binders = await getBinders(userId)
-    if (requestId !== binderRequestId || authStore.user?.uid !== userId) return
-
-    binderOptions.value = binders.map(({ id, binder }) => {
-      const copies = record.entry.binderQuantities[id] ?? 0
-      return { label: copies ? `${binder.name} · ${copies} assigned` : binder.name, value: id }
-    })
-
-    if (binderOptions.value.length === 1) selectBinder(binderOptions.value[0].value)
-  } catch {
-    if (requestId === binderRequestId) {
-      binderLoadError.value = 'Could not load your binders.'
-    }
-  } finally {
-    if (requestId === binderRequestId) {
-      bindersLoading.value = false
-    }
-  }
 }
 
-function selectBinder(binderId) {
-  binderSaveError.value = ''
-  selectedBinderId.value = binderId
-  binderQuantity.value = selectedBinderCopies.value || (binderCopyLimit.value > 0 ? 1 : '')
-}
-
-/**
- * Saves the selected binder's copy count and reloads the collection after success.
- * @param {boolean} [remove=false] Whether to clear the assignment by saving zero copies.
- * @returns {Promise<void>}
- */
-async function submitBinderAssignment(remove = false) {
-  const userId = authStore.user?.uid
-  const entryId = binderEntry.value?.id
-  const binderId = selectedBinderId.value
-  const quantity = remove ? 0 : binderQuantity.value
-
-  if (!userId || !entryId || !binderId || bindersLoading.value || binderSaving.value) return
-
-  binderSaveError.value = ''
-
-  if (!remove && (!Number.isSafeInteger(quantity) || quantity < 1)) {
-    binderSaveError.value = 'Enter a whole number of copies, at least 1.'
-    return
-  }
-
-  if (!remove && quantity > binderCopyLimit.value) {
-    binderSaveError.value = `You can assign up to ${binderCopyLimit.value} copies to this binder.`
-    return
-  }
-
-  binderSaving.value = true
-
-  try {
-    await saveBinderAssignment(userId, entryId, binderId, quantity)
-    if (authStore.user?.uid !== userId) return
-
-    binderDialogOpen.value = false
-    successMessage.value =
-      quantity === 0 ? 'Binder assignment removed.' : 'Binder assignment saved.'
-    await loadCollection()
-  } catch (error) {
-    if (authStore.user?.uid !== userId) return
-
-    binderSaveError.value = error.code
-      ? 'Could not save the binder assignment. Please try again.'
-      : error.message
-  } finally {
-    binderSaving.value = false
-  }
+/** @param {number} quantity Saved assignment count. */
+function handleBinderSaved(quantity) {
+  successMessage.value = quantity === 0 ? 'Binder assignment removed.' : 'Binder assignment saved.'
+  void loadCollection()
 }
 
 /**
@@ -476,7 +379,6 @@ watch(
     inventory.value = []
     collectionSearch.value = ''
     collectionSort.value = 'name-asc'
-    binderRequestId += 1
     binderDialogOpen.value = false
     binderEntry.value = null
     cardActionsOpen.value = false
@@ -650,80 +552,13 @@ onUnmounted(() => {
       @closed="handleCardAction"
     />
 
-    <q-dialog
+    <BinderAssignmentDialog
       v-model="binderDialogOpen"
-      :persistent="binderSaving"
-      aria-labelledby="binder-assignment-title"
-    >
-      <q-card v-if="binderEntry" class="binder-assignment-dialog">
-        <q-card-section>
-          <h2 id="binder-assignment-title" class="text-h6 q-my-none">Assign to binder</h2>
-          <p class="text-grey-7 q-mb-none">
-            {{ binderEntry.entry.card.name }} · {{ binderEntry.entry.quantity }} owned
-          </p>
-        </q-card-section>
-
-        <q-card-section class="q-gutter-md">
-          <p v-if="bindersLoading" role="status">Loading binders…</p>
-          <p v-else-if="binderLoadError" class="text-negative" role="alert">
-            {{ binderLoadError }}
-          </p>
-          <p v-else-if="binderOptions.length === 0">Create a binder on the Binders page first.</p>
-
-          <template v-else>
-            <q-select
-              :model-value="selectedBinderId"
-              :options="binderOptions"
-              label="Binder"
-              outlined
-              emit-value
-              map-options
-              :disable="binderSaving"
-              @update:model-value="selectBinder"
-            />
-            <q-input
-              v-if="selectedBinderId"
-              v-model.number="binderQuantity"
-              type="number"
-              min="1"
-              :max="binderCopyLimit"
-              step="1"
-              label="Assigned copies"
-              :hint="`You can assign up to ${binderCopyLimit} to this binder.`"
-              outlined
-              :disable="binderSaving"
-              @keyup.enter="submitBinderAssignment()"
-            />
-          </template>
-
-          <p v-if="binderSaveError" class="text-negative" role="alert">
-            {{ binderSaveError }}
-          </p>
-        </q-card-section>
-
-        <q-card-actions class="q-gutter-xs">
-          <q-btn
-            v-if="selectedBinderCopies > 0"
-            flat
-            no-caps
-            color="negative"
-            label="Remove assignment"
-            :disable="binderSaving"
-            @click="submitBinderAssignment(true)"
-          />
-          <q-space />
-          <q-btn v-close-popup flat no-caps label="Cancel" :disable="binderSaving" />
-          <q-btn
-            color="primary"
-            no-caps
-            label="Save assignment"
-            :loading="binderSaving"
-            :disable="!selectedBinderId || bindersLoading || binderCopyLimit === 0"
-            @click="submitBinderAssignment()"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+      v-model:saving="binderSaving"
+      :record="binderEntry"
+      :user-id="authStore.user?.uid ?? ''"
+      @saved="handleBinderSaved"
+    />
     <AddCardDialog
       v-model="dialogOpen"
       :loading="loading"
@@ -991,8 +826,7 @@ onUnmounted(() => {
   max-width: calc(100vw - 2rem);
 }
 
-.delete-entry-dialog,
-.binder-assignment-dialog {
+.delete-entry-dialog {
   width: 32rem;
   max-width: calc(100vw - 2rem);
 }

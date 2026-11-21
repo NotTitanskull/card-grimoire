@@ -1,12 +1,13 @@
 <script setup>
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { getCollectionEntries } from '../services/collection.js'
 import { useAuthStore } from '@/stores/auth.js'
+import { useTradeConfirmation } from '../composables/useTradeConfirmation.js'
 import { useTradeDraft } from '../composables/useTradeDraft.js'
 import { useTradePrices } from '../composables/useTradePrices.js'
 import ReceivingCardDialog from '../components/trade/ReceivingCardDialog.vue'
 import TradeReviewDialog from '../components/trade/TradeReviewDialog.vue'
-import { completeTrade, TradeConflictError } from '../services/trades.js'
+import TradeHistory from '../components/trade/TradeHistory.vue'
 
 /** @typedef {import('../composables/useTradeDraft.js').TradeOption} TradeOption */
 
@@ -30,9 +31,7 @@ const loadError = ref('')
 const pickerOpen = ref(false)
 const receivingOpen = ref(false)
 const reviewOpen = ref(false)
-const savingTrade = ref(false)
-const pendingTrade = shallowRef(null)
-const tradeSaveError = ref('')
+const activeTab = ref('compare')
 const tradeSaved = ref(false)
 const receivingError = ref('')
 const search = ref('')
@@ -52,6 +51,14 @@ const {
   differenceMinor,
   retry: retryPrices,
 } = useTradePrices(giving, incomingPrintings)
+const {
+  saving: savingTrade,
+  saveError: tradeSaveError,
+  retryRequired,
+  confirm,
+  reset: resetTradeConfirmation,
+} = useTradeConfirmation(unitPriceMinor)
+
 const usd = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' })
 const comparison = computed(() => {
   if (pricingLoading.value) return 'Loading market prices…'
@@ -129,23 +136,16 @@ async function loadOwned() {
     if (authStore.user?.uid !== userId) return
 
     owned.value = records
-      .map(({ id, entry }) => {
-        const assigned = Object.values(entry.binderQuantities).reduce(
-          (total, quantity) => total + quantity,
-          0,
-        )
-
-        return {
-          id,
-          name: entry.card.name,
-          details: `${entry.card.setName} · #${entry.card.collectorNumber} · ${entry.condition} · ${entry.finish}`,
-          printingId: entry.card.scryfallId,
-          condition: entry.condition,
-          finish: entry.finish,
-          imageUrl: entry.card.imageUrl,
-          available: entry.quantity - assigned,
-        }
-      })
+      .map(({ id, entry }) => ({
+        id,
+        name: entry.card.name,
+        details: `${entry.card.setName} · #${entry.card.collectorNumber} · ${entry.condition} · ${entry.finish}`,
+        printingId: entry.card.scryfallId,
+        condition: entry.condition,
+        finish: entry.finish,
+        imageUrl: entry.card.imageUrl,
+        available: entry.unassignedQuantity,
+      }))
       .filter((card) => card.available > 0)
       .sort((a, b) => a.name.localeCompare(b.name))
   } catch {
@@ -178,67 +178,30 @@ async function confirmTrade() {
   const userId = authStore.user?.uid
   if (savingTrade.value || !userId || !giving.value.length || !receiving.value.length) return
 
-  const isRetry = Boolean(pendingTrade.value)
-  const attempt = pendingTrade.value ?? {
-    id: crypto.randomUUID(),
-    giving: giving.value.map((line) => ({
-      ...line,
-      unitValueMinor: unitPriceMinor(line.printingId, line.finish),
-    })),
-    receiving: receiving.value.map((line) => ({
-      ...line,
-      unitValueMinor: unitPriceMinor(line.card.scryfallId, line.finish),
-    })),
-  }
-
-  pendingTrade.value = attempt
-  savingTrade.value = true
-  tradeSaveError.value = ''
   tradeSaved.value = false
+  const result = await confirm(userId, { giving: giving.value, receiving: receiving.value })
+  if (authStore.user?.uid !== userId) return
 
-  let keepForRetry = false
-
-  try {
-    await completeTrade(userId, attempt.id, attempt)
-    if (pendingTrade.value !== attempt) return
-
+  if (result === 'saved') {
     reviewOpen.value = false
     clearDraft()
     tradeSaved.value = true
-    void loadOwned()
-  } catch (error) {
-    if (pendingTrade.value !== attempt) return
-
-    if (error instanceof TradeConflictError) {
-      tradeSaveError.value = error.message
-      void loadOwned()
-    } else if (!isRetry && error?.code === 'permission-denied') {
-      tradeSaveError.value = 'Firestore denied the save. Check the published trade rules.'
-    } else {
-      keepForRetry = true
-      tradeSaveError.value =
-        'Could not verify the save. Retry confirmation to check the same trade.'
-    }
-  } finally {
-    if (pendingTrade.value === attempt) {
-      savingTrade.value = false
-      if (!keepForRetry) pendingTrade.value = null
-    }
   }
+
+  if (result === 'saved' || result === 'conflict') void loadOwned()
 }
 
 watch(
   () => authStore.user?.uid,
   () => {
+    activeTab.value = 'compare'
     owned.value = []
     clearDraft()
     pickerOpen.value = false
     receivingOpen.value = false
     reviewOpen.value = false
     receivingError.value = ''
-    pendingTrade.value = null
-    savingTrade.value = false
-    tradeSaveError.value = ''
+    resetTradeConfirmation()
     tradeSaved.value = false
     void loadOwned()
   },
@@ -252,190 +215,204 @@ watch(
     <q-banner v-if="tradeSaved" class="bg-green-1 text-positive q-mb-md" role="status">
       Trade completed. Your inventory was updated.
     </q-banner>
+    <q-tabs v-model="activeTab" align="left" active-color="primary" no-caps class="q-mb-md">
+      <q-tab name="compare" label="Compare" />
+      <q-tab name="history" label="History" />
+    </q-tabs>
 
-    <div class="trade-panels">
-      <section class="trade-panel" aria-labelledby="trade-giving-heading">
-        <div class="trade-panel-header">
-          <h2 id="trade-giving-heading" class="text-h6 q-ma-none">
-            You give
-            <span v-if="totalCopies" class="trade-copy-count text-body2 text-grey-8">
-              {{ totalCopies }} {{ totalCopies === 1 ? 'copy' : 'copies' }}
-            </span>
-          </h2>
-          <q-btn
-            unelevated
-            no-caps
-            color="primary"
-            icon="add"
-            label="Add card"
-            aria-label="Add card from collection"
-            :disable="loading || Boolean(loadError) || !owned.length"
-            @click="openPicker"
-          />
-        </div>
+    <template v-if="activeTab === 'compare'">
+      <div class="trade-panels">
+        <section class="trade-panel" aria-labelledby="trade-giving-heading">
+          <div class="trade-panel-header">
+            <h2 id="trade-giving-heading" class="text-h6 q-ma-none">
+              You give
+              <span v-if="totalCopies" class="trade-copy-count text-body2 text-grey-8">
+                {{ totalCopies }} {{ totalCopies === 1 ? 'copy' : 'copies' }}
+              </span>
+            </h2>
+            <q-btn
+              unelevated
+              no-caps
+              color="primary"
+              icon="add"
+              label="Add card"
+              aria-label="Add card from collection"
+              :disable="loading || Boolean(loadError) || !owned.length"
+              @click="openPicker"
+            />
+          </div>
 
-        <div v-if="loading" role="status" aria-label="Loading collection">
-          <q-skeleton v-for="row in 3" :key="row" height="60px" class="q-mb-sm" />
-        </div>
-        <q-banner v-else-if="loadError" class="bg-red-1 text-negative" role="alert">
-          {{ loadError }}
-          <template #action>
-            <q-btn flat no-caps label="Retry" @click="loadOwned" />
-          </template>
-        </q-banner>
-        <p v-else-if="!owned.length">
-          There are no copies outside binders to add from your collection.
+          <div v-if="loading" role="status" aria-label="Loading collection">
+            <q-skeleton v-for="row in 3" :key="row" height="60px" class="q-mb-sm" />
+          </div>
+          <q-banner v-else-if="loadError" class="bg-red-1 text-negative" role="alert">
+            {{ loadError }}
+            <template #action>
+              <q-btn flat no-caps label="Retry" @click="loadOwned" />
+            </template>
+          </q-banner>
+          <p v-else-if="!owned.length">
+            There are no copies outside binders to add from your collection.
+          </p>
+          <p v-else-if="!giving.length">
+            Choose cards from your collection to start a trade draft.
+          </p>
+
+          <q-list v-else separator>
+            <q-item v-for="card in giving" :key="card.id" class="items-center">
+              <q-item-section v-if="card.imageUrl" avatar class="trade-thumbnail">
+                <q-img :src="card.imageUrl" alt="" loading="lazy" :ratio="5 / 7" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>{{ card.name }}</q-item-label>
+                <q-item-label caption>{{ card.details }}</q-item-label>
+                <q-item-label caption>{{ card.available }} available</q-item-label>
+                <q-item-label v-if="!pricingLoading && !pricingError" caption>
+                  {{ formatUnitPrice(card.printingId, card.finish) }}
+                </q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <div class="row no-wrap items-center">
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="remove"
+                    :aria-label="`Give one fewer copy of ${card.name}`"
+                    :disable="card.quantity <= 1"
+                    @click="changeQuantity(card.id, -1)"
+                  />
+                  <span class="q-px-xs" aria-live="polite">{{ card.quantity }}</span>
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="add"
+                    :aria-label="`Give one more copy of ${card.name}`"
+                    :disable="card.quantity >= card.available"
+                    @click="changeQuantity(card.id, 1)"
+                  />
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="close"
+                    :aria-label="`Remove ${card.name} from the draft`"
+                    @click="removeCard(card.id)"
+                  />
+                </div>
+              </q-item-section>
+            </q-item>
+          </q-list>
+          <div v-if="giving.length" class="trade-panel-total">
+            <span>Estimated total</span>
+            <strong>{{ formatEstimate(givingEstimate, giving.length) }}</strong>
+          </div>
+        </section>
+
+        <section class="trade-panel" aria-labelledby="trade-receiving-heading">
+          <div class="trade-panel-header">
+            <h2 id="trade-receiving-heading" class="text-h6 q-ma-none">
+              You receive
+              <span v-if="totalReceivedCopies" class="trade-copy-count text-body2 text-grey-8">
+                {{ totalReceivedCopies }} {{ totalReceivedCopies === 1 ? 'copy' : 'copies' }}
+              </span>
+            </h2>
+
+            <q-btn
+              unelevated
+              no-caps
+              color="primary"
+              icon="add"
+              label="Add card"
+              aria-label="Add card to receive"
+              @click="receivingOpen = true"
+            />
+          </div>
+
+          <p v-if="!receiving.length">Add the cards you expect to receive.</p>
+
+          <q-list v-else separator>
+            <q-item v-for="line in receiving" :key="line.id" class="items-center">
+              <q-item-section v-if="line.card.imageUrl" avatar class="trade-thumbnail">
+                <q-img :src="line.card.imageUrl" alt="" loading="lazy" :ratio="5 / 7" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>{{ line.card.name }}</q-item-label>
+                <q-item-label caption>
+                  {{ line.card.setName }} · #{{ line.card.collectorNumber }} ·
+                  {{ line.condition }} ·
+                  {{ line.finish }}
+                </q-item-label>
+                <q-item-label v-if="!pricingLoading && !pricingError" caption>
+                  {{ formatUnitPrice(line.card.scryfallId, line.finish) }}
+                </q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <div class="row no-wrap items-center q-gutter-x-sm">
+                  <span>×{{ line.quantity }}</span>
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="close"
+                    :aria-label="`Remove ${line.card.name}, ${line.condition}, ${line.finish}, from Receiving`"
+                    @click="removeReceivedCard(line.id)"
+                  />
+                </div>
+              </q-item-section>
+            </q-item>
+          </q-list>
+          <div v-if="receiving.length" class="trade-panel-total">
+            <span>Estimated total</span>
+            <strong>{{ formatEstimate(receivingEstimate, receiving.length) }}</strong>
+          </div>
+        </section>
+      </div>
+
+      <section
+        v-if="giving.length || receiving.length"
+        class="trade-comparison"
+        aria-labelledby="trade-comparison-heading"
+      >
+        <h2 id="trade-comparison-heading" class="text-subtitle1 text-weight-bold q-ma-none">
+          Value difference
+        </h2>
+        <p class="q-mb-xs" role="status">{{ comparison }}</p>
+        <q-btn
+          v-if="pricingError"
+          flat
+          no-caps
+          color="primary"
+          label="Retry prices"
+          @click="retryPrices"
+        />
+        <p class="text-caption text-grey-8 q-ma-none">
+          Scryfall market estimates in USD, before condition adjustments.
         </p>
-        <p v-else-if="!giving.length">Choose cards from your collection to start a trade draft.</p>
-
-        <q-list v-else separator>
-          <q-item v-for="card in giving" :key="card.id" class="items-center">
-            <q-item-section v-if="card.imageUrl" avatar class="trade-thumbnail">
-              <q-img :src="card.imageUrl" alt="" loading="lazy" :ratio="5 / 7" />
-            </q-item-section>
-            <q-item-section>
-              <q-item-label>{{ card.name }}</q-item-label>
-              <q-item-label caption>{{ card.details }}</q-item-label>
-              <q-item-label caption>{{ card.available }} available</q-item-label>
-              <q-item-label v-if="!pricingLoading && !pricingError" caption>
-                {{ formatUnitPrice(card.printingId, card.finish) }}
-              </q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <div class="row no-wrap items-center">
-                <q-btn
-                  flat
-                  round
-                  dense
-                  icon="remove"
-                  :aria-label="`Give one fewer copy of ${card.name}`"
-                  :disable="card.quantity <= 1"
-                  @click="changeQuantity(card.id, -1)"
-                />
-                <span class="q-px-xs" aria-live="polite">{{ card.quantity }}</span>
-                <q-btn
-                  flat
-                  round
-                  dense
-                  icon="add"
-                  :aria-label="`Give one more copy of ${card.name}`"
-                  :disable="card.quantity >= card.available"
-                  @click="changeQuantity(card.id, 1)"
-                />
-                <q-btn
-                  flat
-                  round
-                  dense
-                  icon="close"
-                  :aria-label="`Remove ${card.name} from the draft`"
-                  @click="removeCard(card.id)"
-                />
-              </div>
-            </q-item-section>
-          </q-item>
-        </q-list>
-        <div v-if="giving.length" class="trade-panel-total">
-          <span>Estimated total</span>
-          <strong>{{ formatEstimate(givingEstimate, giving.length) }}</strong>
-        </div>
+        <q-btn
+          class="q-mt-md"
+          unelevated
+          no-caps
+          color="primary"
+          label="Review trade"
+          :disable="!giving.length || !receiving.length"
+          @click="reviewOpen = true"
+        />
       </section>
+    </template>
 
-      <section class="trade-panel" aria-labelledby="trade-receiving-heading">
-        <div class="trade-panel-header">
-          <h2 id="trade-receiving-heading" class="text-h6 q-ma-none">
-            You receive
-            <span v-if="totalReceivedCopies" class="trade-copy-count text-body2 text-grey-8">
-              {{ totalReceivedCopies }} {{ totalReceivedCopies === 1 ? 'copy' : 'copies' }}
-            </span>
-          </h2>
-
-          <q-btn
-            unelevated
-            no-caps
-            color="primary"
-            icon="add"
-            label="Add card"
-            aria-label="Add card to receive"
-            @click="receivingOpen = true"
-          />
-        </div>
-
-        <p v-if="!receiving.length">Add the cards you expect to receive.</p>
-
-        <q-list v-else separator>
-          <q-item v-for="line in receiving" :key="line.id" class="items-center">
-            <q-item-section v-if="line.card.imageUrl" avatar class="trade-thumbnail">
-              <q-img :src="line.card.imageUrl" alt="" loading="lazy" :ratio="5 / 7" />
-            </q-item-section>
-            <q-item-section>
-              <q-item-label>{{ line.card.name }}</q-item-label>
-              <q-item-label caption>
-                {{ line.card.setName }} · #{{ line.card.collectorNumber }} · {{ line.condition }} ·
-                {{ line.finish }}
-              </q-item-label>
-              <q-item-label v-if="!pricingLoading && !pricingError" caption>
-                {{ formatUnitPrice(line.card.scryfallId, line.finish) }}
-              </q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <div class="row no-wrap items-center q-gutter-x-sm">
-                <span>×{{ line.quantity }}</span>
-                <q-btn
-                  flat
-                  round
-                  dense
-                  icon="close"
-                  :aria-label="`Remove ${line.card.name}, ${line.condition}, ${line.finish}, from Receiving`"
-                  @click="removeReceivedCard(line.id)"
-                />
-              </div>
-            </q-item-section>
-          </q-item>
-        </q-list>
-        <div v-if="receiving.length" class="trade-panel-total">
-          <span>Estimated total</span>
-          <strong>{{ formatEstimate(receivingEstimate, receiving.length) }}</strong>
-        </div>
-      </section>
-    </div>
-
-    <section
-      v-if="giving.length || receiving.length"
-      class="trade-comparison"
-      aria-labelledby="trade-comparison-heading"
-    >
-      <h2 id="trade-comparison-heading" class="text-subtitle1 text-weight-bold q-ma-none">
-        Value difference
-      </h2>
-      <p class="q-mb-xs" role="status">{{ comparison }}</p>
-      <q-btn
-        v-if="pricingError"
-        flat
-        no-caps
-        color="primary"
-        label="Retry prices"
-        @click="retryPrices"
-      />
-      <p class="text-caption text-grey-8 q-ma-none">
-        Scryfall market estimates in USD, before condition adjustments.
-      </p>
-      <q-btn
-        class="q-mt-md"
-        unelevated
-        no-caps
-        color="primary"
-        label="Review trade"
-        :disable="!giving.length || !receiving.length"
-        @click="reviewOpen = true"
-      />
-    </section>
-
+    <TradeHistory
+      v-else-if="authStore.user?.uid"
+      :key="authStore.user.uid"
+      :user-id="authStore.user.uid"
+    />
     <TradeReviewDialog
       v-model="reviewOpen"
       :sides="reviewSides"
       :comparison="comparison"
       :saving="savingTrade"
-      :retry-required="Boolean(pendingTrade)"
+      :retry-required="retryRequired"
       :save-error="tradeSaveError"
       @confirm="confirmTrade"
     />

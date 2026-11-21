@@ -81,6 +81,23 @@ test('incomplete and invalid saved entries fail instead of getting creation defa
   assert.throws(() => InventoryFactory.fromStoredData(null))
 })
 
+test('assigned and unassigned copy counts follow binder and quantity edits', () => {
+  const entry = InventoryFactory.fromStoredData(storedEntry())
+  assert.equal(entry.assignedQuantity, 3)
+  assert.equal(entry.unassignedQuantity, 1)
+
+  entry.assignToBinder('second-binder', 1)
+  assert.equal(entry.assignedQuantity, 4)
+  assert.equal(entry.unassignedQuantity, 0)
+
+  entry.assignToBinder('binder', 0)
+  assert.equal(entry.assignedQuantity, 1)
+  assert.equal(entry.unassignedQuantity, 3)
+
+  entry.updateDetails({ quantity: 2 })
+  assert.equal(entry.unassignedQuantity, 1)
+})
+
 test('editing copies keep valid and failed edits isolated from the original', () => {
   const original = InventoryFactory.fromStoredData(storedEntry())
   const draft = InventoryFactory.copy(original)
