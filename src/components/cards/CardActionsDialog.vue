@@ -67,11 +67,26 @@ function restoreImageFocus() {
   >
     <q-card
       v-if="entry"
-      class="card-actions-dialog"
-      :class="{ 'card-actions-dialog--details': showDetails }"
+      class="card-actions-dialog grimoire-dialog-sized"
+      :class="
+        showDetails ? 'card-actions-dialog--details' : 'grimoire-dialog grimoire-dialog--sheet'
+      "
     >
-      <q-card-section class="card-dialog-header row no-wrap items-start">
-        <div class="col">
+      <q-card-section
+        :class="
+          showDetails ? 'card-dialog-header row no-wrap items-start' : 'grimoire-dialog__header'
+        "
+      >
+        <template v-if="!showDetails">
+          <img
+            v-if="entry.card.imageUrl"
+            class="card-action-preview"
+            :src="entry.card.imageUrl"
+            alt=""
+          />
+          <q-icon v-else name="tune" class="grimoire-dialog__icon" aria-hidden="true" />
+        </template>
+        <div :class="showDetails ? 'col' : 'grimoire-dialog__heading'">
           <h2 id="card-actions-title" class="card-dialog-title q-ma-none">{{ entry.card.name }}</h2>
           <p
             v-if="showDetails ? entry.card.typeLine : entry.card.setName"
@@ -90,6 +105,7 @@ function restoreImageFocus() {
           round
           dense
           icon="close"
+          :class="{ 'grimoire-dialog__close': !showDetails }"
           :aria-label="showDetails ? 'Close card details' : 'Close card actions'"
         />
       </q-card-section>
@@ -204,43 +220,45 @@ function restoreImageFocus() {
       </template>
 
       <template v-else>
-        <q-separator />
-        <q-card-section v-if="records.length > 1">
+        <q-card-section v-if="records.length > 1" class="card-action-variant">
           <q-select
             v-model="selectedRecordId"
             :options="variantOptions"
             label="Choose an owned entry"
             outlined
+            popup-content-class="grimoire-options"
             emit-value
             map-options
           />
         </q-card-section>
-        <q-list class="q-py-sm">
+        <q-list class="card-action-list">
           <q-item
             clickable
+            class="card-action-item"
             :disable="!actionRecordId"
             @click="chooseAction('edit', actionRecordId)"
           >
-            <q-item-section avatar><q-icon name="edit" color="primary" /></q-item-section>
+            <q-item-section avatar><q-icon name="edit" aria-hidden="true" /></q-item-section>
             <q-item-section>Edit card details</q-item-section>
           </q-item>
           <q-item
             clickable
+            class="card-action-item"
             :disable="!actionRecordId"
             @click="chooseAction('binder', actionRecordId)"
           >
-            <q-item-section avatar><q-icon name="book" color="primary" /></q-item-section>
+            <q-item-section avatar><q-icon name="book" aria-hidden="true" /></q-item-section>
             <q-item-section>Assign to binder</q-item-section>
           </q-item>
-          <q-separator class="q-my-xs" />
+          <q-separator class="card-action-separator" />
           <q-item
             clickable
             :disable="!actionRecordId"
-            class="text-negative"
+            class="card-action-item card-action-item--danger"
             @click="chooseAction('delete', actionRecordId)"
           >
             <q-item-section avatar
-              ><q-icon name="delete_outline" color="negative"
+              ><q-icon name="delete_outline" aria-hidden="true"
             /></q-item-section>
             <q-item-section>Delete entry</q-item-section>
           </q-item>
@@ -290,8 +308,66 @@ function restoreImageFocus() {
 
 <style scoped lang="scss">
 .card-actions-dialog {
-  width: 25rem;
-  max-width: calc(100vw - 2rem);
+  --dialog-width: 25rem;
+}
+
+.card-action-preview {
+  display: block;
+  flex: 0 0 auto;
+  width: 2.125rem;
+  height: 3rem;
+  border-radius: 0.25rem;
+  object-fit: contain;
+}
+
+.card-action-variant {
+  padding-bottom: 0;
+}
+
+.card-action-list {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.5rem;
+}
+
+.card-action-item {
+  min-height: 3.25rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 0.625rem;
+  font-weight: 600;
+
+  :deep(.q-item__section--avatar) {
+    min-width: 0;
+    padding-right: 0.75rem;
+  }
+
+  :deep(.q-icon) {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.625rem;
+    color: var(--q-primary);
+    background: var(--dialog-accent);
+    font-size: 1.125rem;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--q-primary);
+    outline-offset: -2px;
+  }
+}
+
+.card-action-separator {
+  margin: 0.25rem 0.625rem;
+  background: var(--dialog-line);
+}
+
+.card-action-item--danger {
+  color: #a52232;
+
+  :deep(.q-icon) {
+    color: inherit;
+    background: #fcecef;
+  }
 }
 
 .card-dialog-header {
@@ -319,13 +395,14 @@ function restoreImageFocus() {
 }
 
 .card-actions-dialog--details {
+  --dialog-width: 35rem;
+
   display: flex;
   flex-direction: column;
-  width: 35rem;
   overflow: hidden;
 
   .card-dialog-header {
-    border-bottom: 1px solid #dfe5ef;
+    border-bottom: 1px solid var(--surface-border);
   }
 }
 
@@ -344,7 +421,7 @@ function restoreImageFocus() {
 
 .card-preview {
   background: #f3f6fa;
-  border-bottom: 1px solid #dfe5ef;
+  border-bottom: 1px solid var(--surface-border);
 }
 
 .card-image-stage {
@@ -384,7 +461,7 @@ function restoreImageFocus() {
   gap: 0.125rem 0.75rem;
   min-height: 3.75rem;
   padding: 0.875rem 1rem;
-  border-top: 1px solid #dfe5ef;
+  border-top: 1px solid var(--surface-border);
   background: #f9fbfd;
   font-size: 0.875rem;
   line-height: 1.4;

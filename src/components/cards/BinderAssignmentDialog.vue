@@ -17,7 +17,7 @@ const binderDialogOpen = defineModel({ type: Boolean, default: false })
 const binderSaving = defineModel('saving', { type: Boolean, default: false })
 const emit = defineEmits(['saved'])
 
-const binderOptions = ref(/** @type {{ label: string, value: string }[]} */ ([]))
+const binderOptions = ref(/** @type {{ label: string, value: string, name: string }[]} */ ([]))
 const selectedBinderId = ref(/** @type {string | null} */ (null))
 const binderQuantity = ref(/** @type {number | string} */ (0))
 const bindersLoading = ref(false)
@@ -68,7 +68,11 @@ watch(
       const assignments = record.entry.binderQuantities
       binderOptions.value = binders.map(({ id, binder }) => {
         const copies = assignments[id] ?? 0
-        return { label: copies ? `${binder.name} · ${copies} assigned` : binder.name, value: id }
+        return {
+          label: copies ? `${binder.name} · ${copies} assigned` : binder.name,
+          value: id,
+          name: binder.name,
+        }
       })
 
       if (binderOptions.value.length === 1) selectBinder(binderOptions.value[0].value)
@@ -135,27 +139,48 @@ async function submitBinderAssignment(remove = false) {
     :persistent="binderSaving"
     aria-labelledby="binder-assignment-title"
   >
-    <q-card v-if="record" class="binder-assignment-dialog">
-      <q-card-section>
-        <h2 id="binder-assignment-title" class="text-h6 q-my-none">Assign to binder</h2>
-        <p class="text-grey-7 q-mb-none">
-          {{ record.entry.card.name }} · {{ record.entry.quantity }} owned
-        </p>
+    <q-card
+      v-if="record"
+      class="binder-assignment-dialog grimoire-dialog grimoire-dialog-sized"
+      style="--dialog-width: 32rem"
+    >
+      <q-card-section class="grimoire-dialog__header">
+        <q-icon name="book" class="grimoire-dialog__icon" aria-hidden="true" />
+        <div class="grimoire-dialog__heading">
+          <h2 id="binder-assignment-title" class="grimoire-dialog__title">Assign to binder</h2>
+          <p class="grimoire-dialog__subtitle">
+            {{ record.entry.card.name }} · {{ record.entry.quantity }} owned
+          </p>
+        </div>
+        <q-btn
+          v-close-popup
+          :disable="binderSaving"
+          flat
+          round
+          dense
+          icon="close"
+          class="grimoire-dialog__close"
+          aria-label="Close binder assignment"
+        />
       </q-card-section>
 
-      <q-card-section class="q-gutter-md">
-        <p v-if="bindersLoading" role="status">Loading binders…</p>
-        <p v-else-if="binderLoadError" class="text-negative" role="alert">
+      <q-card-section class="grimoire-dialog__body binder-assignment-fields">
+        <p v-if="bindersLoading" class="q-ma-none" role="status">Loading binders…</p>
+        <p v-else-if="binderLoadError" class="text-negative q-ma-none" role="alert">
           {{ binderLoadError }}
         </p>
-        <p v-else-if="binderOptions.length === 0">Create a binder on the Binders page first.</p>
+        <p v-else-if="binderOptions.length === 0" class="q-ma-none">
+          Create a binder on the Binders page first.
+        </p>
 
         <template v-else>
           <q-select
             :model-value="selectedBinderId"
             :options="binderOptions"
+            :display-value="binderOptions.find((binder) => binder.value === selectedBinderId)?.name"
             label="Binder"
             outlined
+            popup-content-class="grimoire-options"
             emit-value
             map-options
             :disable="binderSaving"
@@ -169,25 +194,26 @@ async function submitBinderAssignment(remove = false) {
             :max="binderCopyLimit"
             step="1"
             label="Assigned copies"
-            :hint="`You can assign up to ${binderCopyLimit} to this binder.`"
+            :hint="`${selectedBinderCopies} currently assigned · Max ${binderCopyLimit}`"
             outlined
             :disable="binderSaving"
             @keyup.enter="submitBinderAssignment()"
           />
         </template>
 
-        <p v-if="binderSaveError" class="text-negative" role="alert">
+        <p v-if="binderSaveError" class="text-negative q-ma-none" role="alert">
           {{ binderSaveError }}
         </p>
       </q-card-section>
 
-      <q-card-actions class="q-gutter-xs">
+      <q-card-actions class="grimoire-dialog__footer">
         <q-btn
           v-if="selectedBinderCopies > 0"
           flat
           no-caps
           color="negative"
           label="Remove assignment"
+          class="binder-assignment-remove"
           :disable="binderSaving"
           @click="submitBinderAssignment(true)"
         />
@@ -196,7 +222,9 @@ async function submitBinderAssignment(remove = false) {
         <q-btn
           color="primary"
           no-caps
-          label="Save assignment"
+          unelevated
+          label="Save"
+          aria-label="Save assignment"
           :loading="binderSaving"
           :disable="!selectedBinderId || bindersLoading || binderCopyLimit === 0"
           @click="submitBinderAssignment()"
@@ -207,8 +235,24 @@ async function submitBinderAssignment(remove = false) {
 </template>
 
 <style scoped>
-.binder-assignment-dialog {
-  width: 32rem;
-  max-width: calc(100vw - 2rem);
+.binder-assignment-fields {
+  display: grid;
+  gap: 0.875rem;
+}
+
+@media (max-width: 480px) {
+  .binder-assignment-dialog .grimoire-dialog__footer {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .binder-assignment-remove {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .binder-assignment-dialog .grimoire-dialog__footer :deep(.q-space) {
+    display: none;
+  }
 }
 </style>

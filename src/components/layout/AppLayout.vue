@@ -96,7 +96,7 @@ async function handleLogout() {
 
 .app-header {
   background-color: #fff;
-  border-bottom: 1px solid #dfe5ef;
+  border-bottom: 1px solid var(--surface-border);
 
   &__content {
     display: flex;
@@ -128,7 +128,7 @@ async function handleLogout() {
 
 .app-footer {
   padding-block: 1rem;
-  border-top: 1px solid #dfe5ef;
+  border-top: 1px solid var(--surface-border);
 }
 
 .desktop-navigation {
@@ -141,7 +141,7 @@ async function handleLogout() {
   z-index: 100;
   padding-bottom: env(safe-area-inset-bottom);
   background-color: #fff;
-  border-top: 1px solid #dfe5ef;
+  border-top: 1px solid var(--surface-border);
 }
 
 @media (min-width: 768px) {

@@ -1,9 +1,10 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { getBinders } from '../services/binders.js'
 import { getCollectionEntries } from '../services/collection.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { useTradeConfirmation } from '../composables/useTradeConfirmation.js'
-import { useTradeDraft } from '../composables/useTradeDraft.js'
+import { copiesFromBinder, useTradeDraft } from '../composables/useTradeDraft.js'
 import { useTradePrices } from '../composables/useTradePrices.js'
 import ReceivingCardDialog from '../components/trade/ReceivingCardDialog.vue'
 import TradeReviewDialog from '../components/trade/TradeReviewDialog.vue'
@@ -93,7 +94,10 @@ function formatEstimate({ totalMinor, missing }, lineCount) {
 const reviewSides = computed(() => [
   {
     label: 'You give',
-    lines: giving.value,
+    lines: giving.value.map((line) => ({
+      ...line,
+      binderQuantity: copiesFromBinder(line),
+    })),
     total: formatEstimate(givingEstimate.value, giving.value.length),
   },
   {
@@ -113,13 +117,13 @@ const matchingCards = computed(() => {
   const selectedIds = new Set(giving.value.map(({ id }) => id))
 
   return owned.value.filter((card) => {
-    const text = `${card.name} ${card.details}`.toLowerCase()
+    const text = `${card.name} ${card.details} ${card.binderName ?? ''}`.toLowerCase()
     return !selectedIds.has(card.id) && text.includes(query)
   })
 })
 
 /**
- * Loads eligible entries for the signed-in account and excludes copies assigned to binders.
+ * Loads loose copies and binder sources for entries marked available for trade.
  * Applies results only while the request's account is still signed in.
  * @returns {Promise<void>}
  */
@@ -131,22 +135,40 @@ async function loadOwned() {
   if (!userId) return
 
   try {
-    const records = await getCollectionEntries(userId)
+    const [records, binders] = await Promise.all([getCollectionEntries(userId), getBinders(userId)])
 
     if (authStore.user?.uid !== userId) return
 
+    const binderNames = new Map(binders.map(({ id, binder }) => [id, binder.name]))
+
     owned.value = records
-      .map(({ id, entry }) => ({
-        id,
-        name: entry.card.name,
-        details: `${entry.card.setName} · #${entry.card.collectorNumber} · ${entry.condition} · ${entry.finish}`,
-        printingId: entry.card.scryfallId,
-        condition: entry.condition,
-        finish: entry.finish,
-        imageUrl: entry.card.imageUrl,
-        available: entry.unassignedQuantity,
-      }))
-      .filter((card) => card.available > 0)
+      .flatMap(({ id, entry }) => {
+        const unassigned = entry.unassignedQuantity
+        const option = {
+          id,
+          name: entry.card.name,
+          details: `${entry.card.setName} · #${entry.card.collectorNumber} · ${entry.condition} · ${entry.finish}`,
+          printingId: entry.card.scryfallId,
+          condition: entry.condition,
+          finish: entry.finish,
+          imageUrl: entry.card.imageUrl,
+          available: unassigned,
+          unassigned,
+        }
+        /** @type {TradeOption[]} */
+        const options = unassigned ? [option] : []
+
+        if (entry.availableForTrade) {
+          for (const [binderId, quantity] of Object.entries(entry.binderQuantities)) {
+            const binderName = binderNames.get(binderId)
+            if (binderName) {
+              options.push({ ...option, binderId, binderName, available: unassigned + quantity })
+            }
+          }
+        }
+
+        return options
+      })
       .sort((a, b) => a.name.localeCompare(b.name))
   } catch {
     if (authStore.user?.uid === userId) {
@@ -215,9 +237,16 @@ watch(
     <q-banner v-if="tradeSaved" class="bg-green-1 text-positive q-mb-md" role="status">
       Trade completed. Your inventory was updated.
     </q-banner>
-    <q-tabs v-model="activeTab" align="left" active-color="primary" no-caps class="q-mb-md">
-      <q-tab name="compare" label="Compare" />
-      <q-tab name="history" label="History" />
+    <q-tabs
+      v-model="activeTab"
+      inline-label
+      active-color="primary"
+      no-caps
+      aria-label="Trade views"
+      class="trade-tabs q-mb-md"
+    >
+      <q-tab name="compare" label="Compare" icon="swap_horiz" />
+      <q-tab name="history" label="History" icon="history" />
     </q-tabs>
 
     <template v-if="activeTab === 'compare'">
@@ -252,7 +281,7 @@ watch(
             </template>
           </q-banner>
           <p v-else-if="!owned.length">
-            There are no copies outside binders to add from your collection.
+            No copies are eligible. Mark a card Available for trade to offer copies from a binder.
           </p>
           <p v-else-if="!giving.length">
             Choose cards from your collection to start a trade draft.
@@ -267,6 +296,9 @@ watch(
                 <q-item-label>{{ card.name }}</q-item-label>
                 <q-item-label caption>{{ card.details }}</q-item-label>
                 <q-item-label caption>{{ card.available }} available</q-item-label>
+                <q-item-label v-if="copiesFromBinder(card)" caption>
+                  {{ copiesFromBinder(card) }} from {{ card.binderName }}
+                </q-item-label>
                 <q-item-label v-if="!pricingLoading && !pricingError" caption>
                   {{ formatUnitPrice(card.printingId, card.finish) }}
                 </q-item-label>
@@ -424,42 +456,91 @@ watch(
     />
 
     <q-dialog v-model="pickerOpen" aria-labelledby="trade-picker-title">
-      <q-card style="width: 36rem; max-width: calc(100vw - 3rem)">
-        <q-card-section class="row items-center justify-between">
-          <h2 id="trade-picker-title" class="text-h6 q-ma-none">Choose cards to give</h2>
-          <q-btn v-close-popup flat round dense icon="close" aria-label="Close picker" />
+      <q-card class="trade-picker grimoire-dialog grimoire-dialog--scroll grimoire-dialog-sized">
+        <q-card-section class="grimoire-dialog__header">
+          <q-icon name="collections_bookmark" class="grimoire-dialog__icon" aria-hidden="true" />
+          <h2 id="trade-picker-title" class="grimoire-dialog__title grimoire-dialog__heading">
+            Choose cards to give
+          </h2>
+          <q-btn
+            v-close-popup
+            flat
+            round
+            dense
+            icon="close"
+            class="grimoire-dialog__close"
+            aria-label="Close picker"
+          />
         </q-card-section>
-        <q-card-section class="q-pt-none">
-          <q-input v-model="search" outlined dense type="search" label="Search your collection" />
+        <q-card-section class="trade-picker-search">
+          <q-input
+            v-model="search"
+            outlined
+            dense
+            type="search"
+            aria-label="Search cards or binders"
+            placeholder="Search cards or binders"
+          >
+            <template #prepend><q-icon name="search" aria-hidden="true" /></template>
+          </q-input>
         </q-card-section>
-        <q-list v-if="matchingCards.length" separator>
-          <q-item v-for="card in matchingCards" :key="card.id" class="items-center">
-            <q-item-section>
-              <q-item-label>{{ card.name }}</q-item-label>
-              <q-item-label caption>{{ card.details }}</q-item-label>
-              <q-item-label caption>{{ card.available }} available</q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-btn
-                flat
-                no-caps
-                color="primary"
-                label="Add"
-                :aria-label="`Add ${card.name}, ${card.details}, to the draft`"
-                @click="addCard(card)"
-              />
-            </q-item-section>
-          </q-item>
-        </q-list>
-        <q-card-section v-else>
-          {{
-            search.trim()
-              ? 'No remaining cards match your search.'
-              : 'All eligible entries are in the draft.'
-          }}
+        <q-card-section class="grimoire-dialog__body trade-picker-results">
+          <q-list v-if="matchingCards.length" class="trade-picker-list">
+            <q-item
+              v-for="card in matchingCards"
+              :key="JSON.stringify([card.id, card.binderId])"
+              class="trade-picker-row items-center"
+            >
+              <q-item-section avatar class="trade-picker-thumbnail">
+                <q-img
+                  v-if="card.imageUrl"
+                  :src="card.imageUrl"
+                  :ratio="5 / 7"
+                  alt=""
+                  loading="lazy"
+                />
+                <q-icon v-else name="style" aria-hidden="true" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label class="text-weight-bold">{{ card.name }}</q-item-label>
+                <q-item-label caption>{{ card.details }}</q-item-label>
+                <div class="trade-picker-metadata">
+                  <span class="trade-picker-source">
+                    <q-icon :name="card.binderName ? 'book' : 'style'" aria-hidden="true" />
+                    {{ card.binderName ?? 'Loose copies' }}
+                  </span>
+                  <span>{{ card.available }} available</span>
+                </div>
+                <q-item-label v-if="card.binderName && card.unassigned" caption>
+                  Uses loose copies first
+                </q-item-label>
+              </q-item-section>
+              <q-item-section side class="trade-picker-action">
+                <q-btn
+                  unelevated
+                  no-caps
+                  icon="add"
+                  class="trade-picker-add"
+                  label="Add"
+                  :aria-label="`Add ${card.name}, ${card.details}, from ${card.binderName ?? 'loose copies'}`"
+                  @click="addCard(card)"
+                />
+              </q-item-section>
+            </q-item>
+          </q-list>
+          <p v-else class="trade-picker-empty q-ma-none" role="status">
+            {{
+              search.trim()
+                ? 'No remaining cards match your search.'
+                : 'All eligible entries are in the draft.'
+            }}
+          </p>
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat no-caps color="primary" label="Done" />
+        <q-card-actions align="between" class="grimoire-dialog__footer">
+          <span class="trade-picker-count" aria-live="polite">
+            {{ totalCopies }} {{ totalCopies === 1 ? 'copy' : 'copies' }} selected
+          </span>
+          <q-btn v-close-popup unelevated no-caps color="primary" label="Done" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -467,6 +548,141 @@ watch(
 </template>
 
 <style scoped>
+.trade-tabs {
+  width: fit-content;
+  padding: 0.25rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 0.875rem;
+  background: #fff;
+}
+
+.trade-tabs :deep(.q-tab) {
+  min-height: 2.5rem;
+  border-radius: 0.625rem;
+}
+
+.trade-tabs :deep(.q-tab--active) {
+  background: #e9efff;
+}
+
+.trade-tabs :deep(.q-tab__indicator) {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .trade-tabs {
+    width: 100%;
+  }
+
+  .trade-tabs :deep(.q-tab) {
+    flex: 1;
+  }
+}
+
+.trade-picker-search {
+  flex: 0 0 auto;
+  padding: 0.875rem 1.125rem 0.25rem;
+}
+
+.trade-picker-results {
+  padding-top: 0.625rem;
+}
+
+.trade-picker-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.trade-picker-row {
+  padding: 0.625rem;
+  border: 1px solid var(--dialog-line);
+  border-radius: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.trade-picker-thumbnail {
+  width: 3rem;
+  min-width: 0;
+  padding-right: 0.625rem;
+}
+
+.trade-picker-thumbnail :deep(.q-img) {
+  border-radius: 0.25rem;
+}
+
+.trade-picker-thumbnail :deep(.q-icon) {
+  display: grid;
+  width: 100%;
+  height: 3rem;
+  place-items: center;
+  border-radius: 0.375rem;
+  background: var(--dialog-tint);
+  color: var(--q-primary);
+}
+
+.trade-picker-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  margin-top: 0.375rem;
+  color: var(--dialog-muted);
+  font-size: 0.75rem;
+}
+
+.trade-picker-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.375rem;
+  background: var(--dialog-tint);
+  color: var(--dialog-ink);
+}
+
+.trade-picker-action {
+  padding-left: 0.5rem;
+}
+
+.trade-picker-add {
+  min-height: 2.5rem;
+  padding-inline: 0.625rem;
+  border-radius: 0.625rem;
+  background: var(--dialog-accent);
+  color: var(--q-primary);
+  font-weight: 600;
+}
+
+.trade-picker-count,
+.trade-picker-empty {
+  color: var(--dialog-muted);
+  font-size: 0.875rem;
+}
+
+.trade-picker-empty {
+  padding: 0.875rem 0.625rem;
+  border: 1px dashed var(--dialog-line);
+  border-radius: 0.625rem;
+  text-align: center;
+}
+
+@media (max-width: 767.98px) {
+  .trade-picker-search {
+    padding-inline: 0.875rem;
+  }
+
+  .trade-picker-thumbnail {
+    width: 2.375rem;
+    padding-right: 0.5rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .trade-picker-thumbnail {
+    display: none;
+  }
+}
+
 .trade-panels {
   display: grid;
   gap: 1rem;
@@ -476,7 +692,7 @@ watch(
 .trade-comparison {
   min-width: 0;
   padding: 1rem;
-  border: 1px solid #dfe5ef;
+  border: 1px solid var(--surface-border);
   border-radius: 0.75rem;
   background: #fff;
 }
@@ -516,7 +732,7 @@ watch(
 .trade-panel-total {
   margin-top: auto;
   padding-top: 0.75rem;
-  border-top: 1px solid #dfe5ef;
+  border-top: 1px solid var(--surface-border);
 }
 
 .trade-panel :deep(.q-item) {

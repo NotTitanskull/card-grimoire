@@ -102,6 +102,14 @@ service cloud.firestore {
         && after.assignedQuantity <= after.quantity;
     }
 
+    function isValidTradeBinderReduction(userId, before, after) {
+      return before.availableForTrade
+        && after.quantity < before.quantity
+        && isValidBinderChange(userId, before, after)
+        && after.assignedQuantity < before.assignedQuantity
+        && before.assignedQuantity - after.assignedQuantity <= before.quantity - after.quantity;
+    }
+
     match /users/{userId}/inventory/{entryId} {
       allow read: if isOwner(userId);
 
@@ -124,6 +132,12 @@ service cloud.firestore {
               'binderQuantities', 'assignedQuantity', 'lastBinderId', 'updatedAt'
             ])
             && isValidBinderChange(userId, resource.data, request.resource.data)
+          )
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'quantity', 'binderQuantities', 'assignedQuantity', 'lastBinderId', 'updatedAt'
+            ])
+            && isValidTradeBinderReduction(userId, resource.data, request.resource.data)
           )
         );
 

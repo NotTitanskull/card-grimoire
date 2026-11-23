@@ -46,15 +46,25 @@ export async function completeTrade(userId, tradeId, { giving, receiving }) {
   const outgoingIds = new Set()
 
   const outgoing = giving.map((line) => {
+    const { binderId, binderQuantity = 0 } = line
+
     if (!isDocumentId(line.id) || outgoingIds.has(line.id)) {
       throw new TypeError('Each outgoing inventory entry must appear once.')
     }
     if (!Number.isSafeInteger(line.quantity) || line.quantity < 1) {
       throw new TypeError('Outgoing quantities must be positive whole numbers.')
     }
+    if (
+      !Number.isSafeInteger(binderQuantity) ||
+      binderQuantity < 0 ||
+      binderQuantity > line.quantity ||
+      (binderQuantity > 0 && !isDocumentId(binderId))
+    ) {
+      throw new TypeError('Invalid number of outgoing copies from a binder.')
+    }
 
     outgoingIds.add(line.id)
-    return { line, ref: doc(inventory, line.id) }
+    return { line, binderId, binderQuantity, ref: doc(inventory, line.id) }
   })
 
   const incoming = receiving.map((line) => {
@@ -78,7 +88,7 @@ export async function completeTrade(userId, tradeId, { giving, receiving }) {
     const documents = await Promise.all(outgoing.map(({ ref }) => transaction.get(ref)))
 
     const given = documents.map((document, index) => {
-      const { line, ref } = outgoing[index]
+      const { line, binderId, binderQuantity, ref } = outgoing[index]
 
       if (!document.exists()) {
         throw new TradeConflictError(`${line.name} is no longer in your inventory.`)
@@ -97,18 +107,36 @@ export async function completeTrade(userId, tradeId, { giving, receiving }) {
 
       const remaining = entry.quantity - line.quantity
 
-      if (line.quantity > entry.unassignedQuantity) {
+      if (line.quantity - binderQuantity > entry.unassignedQuantity) {
         throw new TradeConflictError(
           `There are no longer enough copies of ${line.name} outside binders.`,
         )
       }
 
-      return { ref, remaining, snapshot: makeSnapshot(entry.card, line) }
+      const changes = { quantity: remaining, updatedAt: serverTimestamp() }
+
+      if (binderQuantity > 0) {
+        const assigned = entry.binderQuantities[binderId] ?? 0
+        if (!entry.availableForTrade || binderQuantity > assigned) {
+          throw new TradeConflictError(
+            `Copies of ${line.name} from the selected binder are no longer available for this trade.`,
+          )
+        }
+
+        entry.assignToBinder(binderId, assigned - binderQuantity)
+        Object.assign(changes, {
+          binderQuantities: entry.binderQuantities,
+          assignedQuantity: entry.assignedQuantity,
+          lastBinderId: binderId,
+        })
+      }
+
+      return { ref, changes, snapshot: makeSnapshot(entry.card, line) }
     })
 
-    for (const { ref, remaining } of given) {
-      if (remaining === 0) transaction.delete(ref)
-      else transaction.update(ref, { quantity: remaining, updatedAt: serverTimestamp() })
+    for (const { ref, changes } of given) {
+      if (changes.quantity === 0) transaction.delete(ref)
+      else transaction.update(ref, changes)
     }
 
     for (const { ref, data } of incoming) {

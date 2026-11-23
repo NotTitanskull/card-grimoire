@@ -19,7 +19,7 @@ const emit = defineEmits(['select', 'load-more'])
 
 <template>
   <section aria-label="Available card printings" :aria-busy="loading">
-    <q-list v-if="printings.length" bordered separator>
+    <q-list v-if="printings.length" class="grimoire-picker-list">
       <q-item
         v-for="printing in printings"
         :key="printing.scryfallId"

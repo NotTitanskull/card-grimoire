@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Polished card actions, binder dialogs, and the trade picker and review with consistent spacing and clearer controls. The trade picker keeps search and Done visible while results scroll.
+- Reused a shared dialog frame across card forms, deletion, and completed trades. Collection and receiving forms align condition and quantity when space allows.
+- Updated entry deletion to preview the exact printing and show how many copies will be removed.
+- Made trade history entries identifiable by the first card on each side, with copy counts and a summary of additional cards. Completed trade details compare both sides on desktop and stack them on mobile.
+- Organized shared Sass under `src/assets/styles`, with one entry point and reusable styles for theme values, forms, menus, and dialog sizing.
 - Moved binder assignment into a dedicated dialog. Collection refreshes after assignments are saved or removed.
 - Centralized assigned and unassigned copy counts in `Inventory` so binder limits and trade availability use the same calculation.
 - Moved trade confirmation state into `useTradeConfirmation`, including the trade ID and recorded prices used on retry.
@@ -42,13 +47,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added binder names to trade search and allowed cards marked Available for trade to be offered from a binder. Trades use loose copies first and update any affected binder quantities in the same Firestore transaction. Updated Firestore rules to validate those reductions.
 - Added a History tab that lists completed trades newest first and shows each printing, condition, finish, quantity, and recorded price per copy.
 - Added a regression test for assigned and unassigned copy counts after binder and inventory edits.
 - Added the Receiving side of a trade draft with Scryfall printing selection and condition, finish, and quantity controls.
 - Added estimated USD prices per copy and per side, with a value difference when both sides have complete pricing.
-- Added a review and confirmation flow that updates inventory and saves an owner-only trade record in one Firestore transaction. Confirmation retries reuse the same trade ID, and outgoing copies assigned to binders are protected.
+- Added a review and confirmation flow that updates inventory and saves an owner-only trade record in one Firestore transaction. Confirmation retries reuse the same trade ID.
 - Added automated checks for card lookup pagination and cancellation.
-- Added the Giving side of a trade draft with inventory search, variant selection, and quantity controls limited to copies outside binders.
+- Added the Giving side of a trade draft with inventory search, variant selection, and quantity controls based on the selected source.
 - Added local card-name search and A–Z or Z–A sorting to the Collection page.
 - Added a centered card details dialog with owned variants, an Add another action for the same printing, and an image preview that enlarges when tapped or clicked.
 - Added binder assignments from the Collection page, with Firestore validation that keeps assigned copies within the owned quantity.
@@ -83,4 +89,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Removed the unused Vue starter styles and logo from `src/assets`.
 - Removed unused Vue starter components and demo icons.

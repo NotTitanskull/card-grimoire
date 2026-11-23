@@ -62,6 +62,7 @@ watch(open, (isOpen) => {
     v-model="open"
     :step="step"
     :loading="loading"
+    details-title="Receiving details"
     @search="searchByName"
     @hide="reset"
   >
@@ -107,7 +108,7 @@ watch(open, (isOpen) => {
 
       <template v-else-if="!selectedCard && searched">
         <p v-if="hasMore">More matches are available. Try a more specific name.</p>
-        <q-list v-if="cards.length" bordered separator>
+        <q-list v-if="cards.length" class="grimoire-picker-list">
           <q-item v-for="card in cards" :key="card.scryfallId" clickable @click="selectCard(card)">
             <q-item-section>
               <q-item-label>{{ card.name }}</q-item-label>

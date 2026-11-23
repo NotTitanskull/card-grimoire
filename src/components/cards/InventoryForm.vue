@@ -104,10 +104,10 @@ function submitEntry() {
 </script>
 
 <template>
-  <q-form class="q-gutter-y-md" @submit="submitEntry">
-    <div>
-      <h2 class="text-h6 q-ma-none">{{ card.name }}</h2>
-      <p class="text-grey-7 q-mb-none">{{ card.setName }} · #{{ card.collectorNumber }}</p>
+  <q-form class="card-form" @submit="submitEntry">
+    <div class="card-form__summary">
+      <h3>{{ card.name }}</h3>
+      <p>{{ card.setName }} · #{{ card.collectorNumber }}</p>
     </div>
 
     <q-banner
@@ -118,41 +118,46 @@ function submitEntry() {
       {{ errorMessage || saveError }}
     </q-banner>
 
-    <q-input
-      v-model.number="quantity"
-      :disable="saving"
-      outlined
-      hide-bottom-space
-      type="number"
-      label="Quantity"
-      min="1"
-      step="1"
-      required
-    />
-
-    <q-select
-      v-model="condition"
-      :disable="saving"
-      outlined
-      hide-bottom-space
-      label="Condition"
-      :options="CARD_CONDITIONS"
-    />
-
-    <fieldset v-if="card.finishes.length > 1" class="q-pa-sm rounded-borders finish-options">
-      <legend class="q-px-xs">Finish</legend>
-      <div class="row q-col-gutter-sm">
-        <q-radio
-          v-for="option in card.finishes"
-          :key="option"
-          v-model="finish"
-          :val="option"
-          :label="finishLabels[option] ?? option"
+    <div class="card-form__section">
+      <div class="card-form__copy-details">
+        <q-select
+          v-model="condition"
           :disable="saving"
+          outlined
+          hide-bottom-space
+          label="Condition"
+          popup-content-class="grimoire-options"
+          :options="CARD_CONDITIONS"
+        />
+
+        <q-input
+          v-model.number="quantity"
+          :disable="saving"
+          outlined
+          hide-bottom-space
+          type="number"
+          label="Quantity"
+          min="1"
+          step="1"
+          required
         />
       </div>
-    </fieldset>
-    <p v-else class="q-mb-none">Finish: {{ finishLabels[finish] ?? finish }}</p>
+
+      <fieldset v-if="card.finishes.length > 1" class="q-pa-sm rounded-borders finish-options">
+        <legend class="q-px-xs">Finish</legend>
+        <div class="row q-col-gutter-sm">
+          <q-radio
+            v-for="option in card.finishes"
+            :key="option"
+            v-model="finish"
+            :val="option"
+            :label="finishLabels[option] ?? option"
+            :disable="saving"
+          />
+        </div>
+      </fieldset>
+      <p v-else class="q-mb-none">Finish: {{ finishLabels[finish] ?? finish }}</p>
+    </div>
 
     <q-input
       v-model="purchasePrice"
@@ -170,7 +175,7 @@ function submitEntry() {
       <q-checkbox :disable="saving" v-model="availableForTrade" label="Available for trade" />
     </div>
 
-    <div class="row justify-end q-gutter-sm">
+    <div class="card-form__actions">
       <q-btn
         :disable="saving"
         flat
@@ -181,6 +186,7 @@ function submitEntry() {
 
       <q-btn
         type="submit"
+        unelevated
         color="primary"
         no-caps
         :label="initialEntry ? 'Save changes' : 'Save to collection'"
@@ -194,6 +200,6 @@ function submitEntry() {
 <style scoped>
 .finish-options {
   min-width: 0;
-  border: 1px solid #dfe5ef;
+  border: 1px solid var(--surface-border);
 }
 </style>

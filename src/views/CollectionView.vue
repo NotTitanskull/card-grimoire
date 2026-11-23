@@ -13,6 +13,7 @@ import CardActionsDialog from '../components/cards/CardActionsDialog.vue'
 import { useCardLookup } from '../composables/useCardLookup.js'
 import CardPrintingPicker from '../components/cards/CardPrintingPicker.vue'
 import InventoryForm from '../components/cards/InventoryForm.vue'
+import DialogFrame from '../components/layout/DialogFrame.vue'
 import ResponsiveAddButton from '../components/layout/ResponsiveAddButton.vue'
 
 /** @typedef {import('../services/collection.js').CollectionRecord} CollectionRecord */
@@ -450,6 +451,7 @@ onUnmounted(() => {
             label="Sort by"
             dense
             outlined
+            popup-content-class="grimoire-options"
             emit-value
             map-options
           />
@@ -637,7 +639,7 @@ onUnmounted(() => {
           <span v-if="hasMore"> More matches are available. Refine your search for now. </span>
         </p>
 
-        <q-list v-if="cards.length" bordered separator>
+        <q-list v-if="cards.length" class="grimoire-picker-list">
           <q-item v-for="card in cards" :key="card.scryfallId" clickable @click="selectCard(card)">
             <q-item-section>
               <q-item-label>{{ card.name }}</q-item-label>
@@ -652,100 +654,94 @@ onUnmounted(() => {
       </template>
     </AddCardDialog>
 
-    <q-dialog v-model="editDialogOpen" :persistent="saving" aria-labelledby="edit-entry-title">
-      <q-card class="edit-entry-dialog">
-        <q-card-section class="row items-center">
-          <h2 id="edit-entry-title" class="text-h6 q-ma-none">Edit collection entry</h2>
+    <DialogFrame
+      v-model="editDialogOpen"
+      :persistent="saving"
+      title="Edit collection entry"
+      icon="edit"
+      width="40rem"
+    >
+      <InventoryForm
+        v-if="editingEntry"
+        :key="editingEntry.id"
+        :card="editingEntry.entry.card"
+        :initial-entry="editingEntry.entry"
+        :saving="saving"
+        :save-error="saveError"
+        @submit="saveEditedEntry"
+        @cancel="editDialogOpen = false"
+      />
+    </DialogFrame>
 
-          <q-space />
-
-          <q-btn
-            v-close-popup
-            flat
-            round
-            dense
-            icon="close"
-            aria-label="Close edit dialog"
-            :disable="saving"
-          />
-        </q-card-section>
-
-        <q-separator />
-
-        <q-card-section>
-          <InventoryForm
-            v-if="editingEntry"
-            :key="editingEntry.id"
-            :card="editingEntry.entry.card"
-            :initial-entry="editingEntry.entry"
-            :saving="saving"
-            :save-error="saveError"
-            @submit="saveEditedEntry"
-            @cancel="editDialogOpen = false"
-          />
-        </q-card-section>
-      </q-card>
-    </q-dialog>
-
-    <q-dialog
+    <DialogFrame
       v-model="deleteDialogOpen"
       :persistent="deleting"
-      aria-labelledby="delete-entry-title"
-      aria-describedby="delete-entry-description"
+      title="Delete entry?"
+      icon="delete_outline"
+      width="28rem"
+      danger
+      hide-close
+      aria-describedby="delete-entry-impact"
     >
-      <q-card class="delete-entry-dialog">
-        <q-card-section>
-          <h2 id="delete-entry-title" class="text-h6 q-ma-none">Delete collection entry?</h2>
-        </q-card-section>
-
-        <q-card-section v-if="deletingEntry">
-          <p id="delete-entry-description">
-            Remove all {{ deletingEntry.entry.quantity }} owned copies of
+      <template v-if="deletingEntry">
+        <div class="delete-entry-preview">
+          <q-img
+            v-if="deletingEntry.entry.card.imageUrl"
+            :src="deletingEntry.entry.card.imageUrl"
+            :ratio="5 / 7"
+            class="delete-entry-thumbnail"
+            alt=""
+          />
+          <div class="delete-entry-printing">
             <strong>{{ deletingEntry.entry.card.name }}</strong>
-            in this entry?
-          </p>
+            <span class="delete-entry-set">
+              <span>{{ deletingEntry.entry.card.setName }}</span>
+              <span>#{{ deletingEntry.entry.card.collectorNumber }}</span>
+            </span>
+            <span>
+              {{ deletingEntry.entry.condition }} ·
+              <span class="text-capitalize">{{ deletingEntry.entry.finish }}</span>
+            </span>
+          </div>
+        </div>
 
-          <p class="text-grey-7">
-            {{ deletingEntry.entry.card.setName }} · #{{
-              deletingEntry.entry.card.collectorNumber
-            }}
-            · {{ deletingEntry.entry.condition }} · {{ deletingEntry.entry.finish }}
-          </p>
+        <p id="delete-entry-impact" class="delete-entry-impact">
+          This permanently removes
+          <strong>
+            {{ deletingEntry.entry.quantity }}
+            {{ deletingEntry.entry.quantity === 1 ? 'copy' : 'copies' }}
+          </strong>
+          from your collection.
+          <template v-if="deletingEntry.entry.quantity > 1">
+            To remove fewer copies, edit the quantity.
+          </template>
+        </p>
+      </template>
 
-          <p class="q-mb-none">
-            This cannot be undone. To remove only some copies, cancel and edit the quantity instead.
-          </p>
+      <q-banner v-if="deleteError" class="bg-red-1 text-negative rounded-borders" role="alert">
+        {{ deleteError }}
+      </q-banner>
 
-          <q-banner
-            v-if="deleteError"
-            class="bg-red-1 text-negative rounded-borders q-mt-md"
-            role="alert"
-          >
-            {{ deleteError }}
-          </q-banner>
-        </q-card-section>
-
-        <q-card-actions align="right">
-          <q-btn
-            flat
-            no-caps
-            label="Cancel"
-            autofocus
-            :disable="deleting"
-            @click="deleteDialogOpen = false"
-          />
-
-          <q-btn
-            no-caps
-            color="negative"
-            label="Delete entry"
-            :loading="deleting"
-            :disable="deleting"
-            @click="confirmDelete"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+      <template #actions>
+        <q-btn
+          flat
+          no-caps
+          label="Cancel"
+          autofocus
+          :disable="deleting"
+          @click="deleteDialogOpen = false"
+        />
+        <q-btn
+          unelevated
+          no-caps
+          color="negative"
+          label="Delete entry"
+          :loading="deleting"
+          :disable="deleting"
+          @click="confirmDelete"
+        />
+      </template>
+    </DialogFrame>
   </section>
 </template>
 
@@ -800,6 +796,50 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
+.delete-entry-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--dialog-line);
+  border-radius: 0.75rem;
+  background: var(--dialog-tint);
+}
+
+.delete-entry-thumbnail {
+  flex: 0 0 2.75rem;
+  width: 2.75rem;
+  border-radius: 0.25rem;
+}
+
+.delete-entry-printing {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.8125rem;
+  color: var(--dialog-muted);
+
+  strong {
+    color: var(--dialog-ink);
+    font-size: 1rem;
+  }
+}
+
+.delete-entry-set {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.375rem;
+}
+
+.delete-entry-impact {
+  margin: 0.875rem 0 0;
+
+  &:not(:last-child) {
+    margin-bottom: 0.875rem;
+  }
+}
+
 .collection-skeletons {
   display: grid;
   gap: 0.5rem;
@@ -819,15 +859,5 @@ onUnmounted(() => {
       display: block;
     }
   }
-}
-
-.edit-entry-dialog {
-  width: 40rem;
-  max-width: calc(100vw - 2rem);
-}
-
-.delete-entry-dialog {
-  width: 32rem;
-  max-width: calc(100vw - 2rem);
 }
 </style>

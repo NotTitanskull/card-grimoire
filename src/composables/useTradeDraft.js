@@ -12,10 +12,18 @@ import { CARD_CONDITIONS } from '../models/cardConditions.js'
  * @property {string} condition Condition of the owned copies.
  * @property {string} finish Finish of the owned copies.
  * @property {string} imageUrl Thumbnail source for the owned printing.
- * @property {number} available Copies outside binders.
+ * @property {number} available Maximum copies available with the selected source.
+ * @property {number} unassigned Copies outside binders.
+ * @property {string} [binderId] Selected binder when assigned copies may be traded.
+ * @property {string} [binderName] Display name of the selected binder.
  */
 
 /** @typedef {TradeOption & { quantity: number }} TradeDraftLine */
+
+/** @param {TradeDraftLine} line Outgoing copies. */
+export function copiesFromBinder(line) {
+  return line.binderId ? Math.max(0, line.quantity - line.unassigned) : 0
+}
 
 /** Manages the cards and quantities in an unsaved trade draft. */
 export function useTradeDraft() {

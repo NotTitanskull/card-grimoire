@@ -219,19 +219,40 @@ onMounted(loadBinders)
       </q-card>
     </div>
 
-    <q-dialog v-model="createDialogOpen" :persistent="saving" @hide="resetBinderForm">
-      <q-card class="binder-create-dialog">
+    <q-dialog
+      v-model="createDialogOpen"
+      :persistent="saving"
+      aria-labelledby="new-binder-title"
+      @hide="resetBinderForm"
+    >
+      <q-card
+        class="binder-create-dialog grimoire-dialog grimoire-dialog-sized"
+        style="--dialog-width: 26rem"
+      >
         <q-form @submit.prevent="submitBinder">
-          <q-card-section>
-            <h2 class="text-h6 text-weight-bold q-ma-none">New binder</h2>
+          <q-card-section class="grimoire-dialog__header">
+            <q-icon name="book" class="grimoire-dialog__icon" aria-hidden="true" />
+            <h2 id="new-binder-title" class="grimoire-dialog__title grimoire-dialog__heading">
+              New binder
+            </h2>
+            <q-btn
+              v-close-popup
+              :disable="saving"
+              flat
+              round
+              dense
+              icon="close"
+              class="grimoire-dialog__close"
+              aria-label="Close new binder dialog"
+            />
           </q-card-section>
-          <q-card-section class="q-pt-none">
+          <q-card-section class="grimoire-dialog__body">
             <q-input v-model="name" label="Binder name" outlined autofocus :disable="saving" />
             <p v-if="saveError" class="text-negative q-mt-sm q-mb-none" role="alert">
               {{ saveError }}
             </p>
           </q-card-section>
-          <q-card-actions align="right">
+          <q-card-actions align="right" class="grimoire-dialog__footer">
             <q-btn v-close-popup flat no-caps label="Cancel" :disable="saving" />
             <q-btn
               type="submit"
@@ -363,11 +384,5 @@ $binder-grid-gap: 1rem;
   border: 1px dashed currentColor;
   border-radius: 0.875rem;
   text-align: center;
-}
-
-.binder-create-dialog {
-  width: 26rem;
-  max-width: calc(100vw - 2rem);
-  border-radius: 0.875rem;
 }
 </style>

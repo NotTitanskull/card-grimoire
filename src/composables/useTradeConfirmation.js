@@ -1,12 +1,13 @@
 import { computed, onScopeDispose, ref, shallowRef } from 'vue'
 import { completeTrade, TradeConflictError } from '../services/trades.js'
+import { copiesFromBinder } from './useTradeDraft.js'
 
 /** @typedef {import('./useTradeDraft.js').TradeDraftLine} TradeDraftLine */
 /** @typedef {import('../models/Card.js').Card} Card */
 /** @typedef {{ card: Card, condition: string, finish: string, quantity: number }} ReceivingLine */
 /** @typedef {{ giving: readonly TradeDraftLine[], receiving: readonly ReceivingLine[] }} TradeDraft */
 /** @typedef {{ unitValueMinor: number | null }} RecordedPrice */
-/** @typedef {{ id: string, giving: (TradeDraftLine & RecordedPrice)[], receiving: (ReceivingLine & RecordedPrice)[] }} TradeAttempt */
+/** @typedef {{ id: string, giving: (TradeDraftLine & RecordedPrice & { binderQuantity: number })[], receiving: (ReceivingLine & RecordedPrice)[] }} TradeAttempt */
 
 /**
  * Captures a trade at confirmation and preserves it across retries.
@@ -32,6 +33,7 @@ export function useTradeConfirmation(unitPriceMinor) {
       id: crypto.randomUUID(),
       giving: giving.map((line) => ({
         ...line,
+        binderQuantity: copiesFromBinder(line),
         unitValueMinor: unitPriceMinor(line.printingId, line.finish),
       })),
       receiving: receiving.map((line) => ({
