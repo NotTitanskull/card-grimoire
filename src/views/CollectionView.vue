@@ -103,6 +103,10 @@ const inventoryByPrinting = computed(() => {
   return groups
 })
 
+const totalCopies = computed(() =>
+  Array.from(inventoryByPrinting.value.values()).reduce((total, group) => total + group.copies, 0),
+)
+
 const visibleInventory = computed(() => {
   const search = (collectionSearch.value ?? '').trim().toLocaleLowerCase()
   const direction = collectionSort.value === 'name-desc' ? -1 : 1
@@ -423,7 +427,11 @@ onUnmounted(() => {
     <header class="collection-page-header">
       <div>
         <h1 class="text-h4 text-weight-bold q-mt-none q-mb-sm">My Collection</h1>
-        <p class="q-mb-none">Browse and manage every card in your collection.</p>
+        <p v-if="inventory.length && !collectionError" class="collection-total">
+          {{ inventoryByPrinting.size }}
+          {{ inventoryByPrinting.size === 1 ? 'printing' : 'printings' }} · {{ totalCopies }}
+          {{ totalCopies === 1 ? 'copy' : 'copies' }}
+        </p>
       </div>
       <ResponsiveAddButton label="Add card" @click="dialogOpen = true" />
     </header>
@@ -435,41 +443,57 @@ onUnmounted(() => {
     >
       {{ successMessage }}
     </q-banner>
-    <div class="q-mt-lg" :aria-busy="collectionLoading">
-      <div v-if="inventory.length && !collectionError" class="row q-col-gutter-sm q-mb-md">
-        <div class="col-12 col-sm-8">
-          <q-input v-model="collectionSearch" label="Search cards" type="search" dense outlined>
-            <template #prepend>
-              <q-icon name="search" />
-            </template>
-          </q-input>
-        </div>
-        <div class="col-12 col-sm-4">
-          <q-select
-            v-model="collectionSort"
-            :options="collectionSortOptions"
-            label="Sort by"
-            dense
-            outlined
-            popup-content-class="grimoire-options"
-            emit-value
-            map-options
-          />
-        </div>
+    <div class="collection-inventory" :aria-busy="collectionLoading">
+      <div v-if="inventory.length && !collectionError" class="collection-controls">
+        <q-input
+          v-model="collectionSearch"
+          aria-label="Search cards"
+          placeholder="Search cards"
+          type="search"
+          clearable
+          dense
+          outlined
+        >
+          <template #prepend>
+            <q-icon name="search" aria-hidden="true" />
+          </template>
+        </q-input>
+        <q-select
+          v-model="collectionSort"
+          :options="collectionSortOptions"
+          label="Sort by"
+          dense
+          outlined
+          popup-content-class="grimoire-options"
+          emit-value
+          map-options
+        />
       </div>
 
       <div
         v-if="collectionLoading"
-        class="collection-skeletons"
+        class="collection-list collection-skeletons"
         role="status"
         aria-label="Loading collection"
       >
-        <q-skeleton v-for="item in 5" :key="item" type="rect" height="88px" aria-hidden="true" />
+        <div
+          v-for="item in 5"
+          :key="item"
+          class="collection-list-row collection-skeleton-row"
+          aria-hidden="true"
+        >
+          <q-skeleton type="rect" class="collection-card-thumbnail" />
+          <div class="collection-skeleton-summary">
+            <q-skeleton type="text" width="65%" />
+            <q-skeleton type="text" width="45%" />
+          </div>
+          <q-skeleton type="rect" width="2.5rem" height="1.5rem" />
+        </div>
       </div>
 
       <q-banner
         v-else-if="collectionError"
-        class="bg-red-1 text-negative rounded-borders"
+        class="collection-error bg-red-1 text-negative"
         role="alert"
       >
         {{ collectionError }}
@@ -479,8 +503,12 @@ onUnmounted(() => {
         </template>
       </q-banner>
 
-      <q-list v-else-if="visibleInventory.length" bordered separator>
-        <q-item v-for="group in visibleInventory" :key="group.card.scryfallId">
+      <ul v-else-if="visibleInventory.length" class="collection-list" aria-label="Card printings">
+        <li
+          v-for="group in visibleInventory"
+          :key="group.card.scryfallId"
+          class="collection-list-row"
+        >
           <button
             type="button"
             class="collection-card-row"
@@ -498,50 +526,59 @@ onUnmounted(() => {
               loading="lazy"
               alt=""
             />
-            <q-icon v-else name="image_not_supported" size="32px" aria-hidden="true" />
+            <span v-else class="collection-card-thumbnail collection-thumbnail-fallback">
+              <q-icon name="style" size="1.5rem" aria-hidden="true" />
+            </span>
 
             <span class="collection-card-summary">
               <span class="collection-card-title">{{ group.card.name }}</span>
-              <span class="text-caption text-grey-7">
-                {{ group.card.setName }} · #{{ group.card.collectorNumber }}
+              <span class="collection-printing">
+                <span>{{ group.card.setName }}</span>
+                <span>#{{ group.card.collectorNumber }}</span>
               </span>
-              <span v-if="group.variants.size > 1" class="text-caption text-grey-7">
-                {{ group.variants.size }} variants
-              </span>
-              <span v-else class="text-caption text-grey-7">
-                {{ group.records[0].entry.condition }} · {{ group.records[0].entry.finish }}
-              </span>
-              <span
-                v-if="group.favorite || group.availableForTrade"
-                class="text-caption text-grey-7"
-              >
-                <span v-if="group.favorite">Favorite</span>
-                <span v-if="group.favorite && group.availableForTrade"> · </span>
-                <span v-if="group.availableForTrade">Available for trade</span>
+              <span class="collection-card-tags">
+                <span v-if="group.variants.size > 1" class="collection-tag">
+                  {{ group.variants.size }} variants
+                </span>
+                <span v-else class="collection-tag">
+                  {{ group.records[0].entry.condition }} ·
+                  <span class="text-capitalize">{{ group.records[0].entry.finish }}</span>
+                </span>
+                <span v-if="group.favorite" class="collection-tag">
+                  <q-icon name="star" aria-hidden="true" /> Favorite
+                </span>
+                <span v-if="group.availableForTrade" class="collection-tag collection-tag--trade">
+                  <q-icon name="swap_horiz" aria-hidden="true" /> Available for trade
+                </span>
               </span>
             </span>
           </button>
 
-          <q-item-section side>
-            <div class="row items-center no-wrap q-gutter-x-xs">
-              <q-badge color="primary" :label="`Qty: ${group.copies}`" />
-              <q-btn
-                flat
-                round
-                dense
-                icon="more_vert"
-                aria-haspopup="dialog"
-                :aria-label="`Actions for ${group.card.name}`"
-                :disable="saving || deleting || binderSaving"
-                @click="openCardDialog(group.records[0])"
-              />
-            </div>
-          </q-item-section>
-        </q-item>
-      </q-list>
+          <div class="collection-row-actions">
+            <span class="collection-quantity">×{{ group.copies }}</span>
+            <q-btn
+              class="collection-row-menu"
+              flat
+              round
+              dense
+              icon="more_vert"
+              aria-haspopup="dialog"
+              :aria-label="`Actions for ${group.card.name}`"
+              :disable="saving || deleting || binderSaving"
+              @click="openCardDialog(group.records[0])"
+            />
+          </div>
+        </li>
+      </ul>
 
-      <p v-else-if="inventory.length" role="status">No cards match your search.</p>
-      <p v-else role="status">Your collection is empty. Add a card to get started.</p>
+      <div v-else class="collection-empty" role="status">
+        <q-icon
+          :name="inventory.length ? 'search_off' : 'collections_bookmark'"
+          aria-hidden="true"
+        />
+        <p v-if="inventory.length">No cards match your search.</p>
+        <p v-else>Your collection is empty. Add a card to get started.</p>
+      </div>
     </div>
     <CardActionsDialog
       v-model="cardActionsOpen"
@@ -753,24 +790,90 @@ onUnmounted(() => {
   gap: 1rem;
 }
 
+.collection-total {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.collection-inventory {
+  margin-top: 1.25rem;
+}
+
+.collection-controls,
+.collection-list-row,
+.collection-empty {
+  border: 1px solid var(--surface-border);
+  border-radius: 0.875rem;
+  background: #fff;
+}
+
+.collection-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(9rem, 13rem);
+  gap: 0.625rem;
+  padding: 0.625rem;
+  margin-bottom: 0.75rem;
+
+  :deep(.q-field__control) {
+    border-radius: 0.625rem;
+  }
+
+  :deep(.q-field--outlined:not(.q-field--highlighted) .q-field__control::before) {
+    border-color: var(--surface-border);
+  }
+
+  @media (max-width: 480px) {
+    grid-template-columns: minmax(0, 1fr) 8.5rem;
+  }
+
+  @media (max-width: 360px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.collection-list {
+  display: grid;
+  gap: 0.625rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.collection-list-row {
+  display: flex;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.375rem;
+}
+
 .collection-card-row {
   display: flex;
   flex: 1;
   align-items: center;
   gap: 0.75rem;
   min-width: 0;
-  padding: 0.25rem;
+  padding: 0.375rem;
   border: 0;
-  border-radius: 0.25rem;
+  border-radius: 0.625rem;
   background: none;
   color: inherit;
   cursor: pointer;
   font: inherit;
-  text-align: left;
+  text-align: start;
 
-  &:hover,
   &:focus-visible {
-    background-color: color-mix(in srgb, var(--q-primary) 6%, transparent);
+    outline: 2px solid var(--q-primary);
+    outline-offset: -2px;
+  }
+
+  @media (any-hover: hover) {
+    &:hover:not(:disabled) {
+      background-color: color-mix(in srgb, var(--q-primary) 5%, white);
+
+      .collection-card-title {
+        color: var(--q-primary);
+      }
+    }
   }
 
   &:disabled {
@@ -781,19 +884,120 @@ onUnmounted(() => {
 
 .collection-card-thumbnail {
   flex-shrink: 0;
-  border-radius: 0.25rem;
+  width: 3rem;
+  height: 4.1875rem;
+  border-radius: 0.375rem;
   object-fit: contain;
+}
+
+.collection-thumbnail-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--surface-muted);
+  color: var(--text-muted);
 }
 
 .collection-card-summary {
   display: grid;
+  gap: 0.125rem;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
 .collection-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.collection-printing,
+.collection-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.collection-printing {
+  gap: 0 0.375rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.collection-card-tags {
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.collection-tag,
+.collection-quantity {
+  border-radius: 0.375rem;
+  background: var(--surface-muted);
+}
+
+.collection-tag {
+  padding: 0.125rem 0.375rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+
+  .q-icon {
+    margin-inline-end: 0.125rem;
+  }
+}
+
+.collection-tag--trade {
+  background: var(--secondary-surface);
+  color: var(--q-secondary);
+}
+
+.collection-row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding-inline-end: 0.25rem;
+
+  @media (max-width: 480px) {
+    flex-direction: column;
+    gap: 0.125rem;
+    padding-inline-end: 0;
+  }
+}
+
+.collection-quantity {
+  padding: 0.25rem 0.5rem;
   color: var(--q-primary);
+  font-size: 0.8125rem;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.collection-row-menu {
+  width: 2.75rem;
+  height: 2.75rem;
+  color: var(--text-muted);
+}
+
+.collection-empty {
+  display: grid;
+  justify-items: center;
+  gap: 0.625rem;
+  padding: 2rem 1rem;
+  color: var(--text-muted);
+  text-align: center;
+
+  p {
+    margin: 0;
+  }
+
+  .q-icon {
+    font-size: 1.75rem;
+    color: var(--q-primary);
+  }
+}
+
+.collection-error {
+  border-radius: 0.875rem;
 }
 
 .delete-entry-preview {
@@ -841,9 +1045,6 @@ onUnmounted(() => {
 }
 
 .collection-skeletons {
-  display: grid;
-  gap: 0.5rem;
-
   > :nth-child(n + 4) {
     display: none;
   }
@@ -859,5 +1060,17 @@ onUnmounted(() => {
       display: block;
     }
   }
+}
+
+.collection-skeleton-row {
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+}
+
+.collection-skeleton-summary {
+  flex: 1;
+  max-width: 24rem;
+  margin-inline-end: auto;
 }
 </style>

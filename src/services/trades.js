@@ -11,12 +11,58 @@ import { InventoryFactory } from '../factories/InventoryFactory.js'
 import { serializeNewInventoryEntry } from './collection.js'
 import { db } from './firestore.js'
 
+/** @typedef {import('../models/Card.js').Card} Card */
+/** @typedef {import('firebase/firestore').Timestamp} Timestamp */
+
+/**
+ * @typedef {Object} TradeLineDetails
+ * @property {number} quantity Positive whole number of copies.
+ * @property {string} condition Condition of the copies.
+ * @property {string} finish Finish of the copies.
+ * @property {number|null} [unitValueMinor] Market price per copy in USD cents. Defaults to null when unavailable.
+ */
+
+/**
+ * @typedef {Object} GivingSource
+ * @property {string} id Inventory document ID.
+ * @property {string} name Card name shown in conflict messages.
+ * @property {string} printingId Expected Scryfall printing ID.
+ * @property {string} [binderId] Required when any copies come from a binder.
+ * @property {number} [binderQuantity=0] Copies included in quantity that come from the selected binder. The rest come from unassigned inventory.
+ */
+
+/**
+ * @typedef {Object} TradeCompletion
+ * @property {readonly (TradeLineDetails & GivingSource)[]} giving Outgoing copies, with one line per inventory document.
+ * @property {readonly (TradeLineDetails & { card: Card })[]} receiving Incoming copies, with a new inventory document for each line.
+ */
+
+/**
+ * @typedef {Omit<TradeLineDetails, 'unitValueMinor'> & { card: Card, unitValueMinor: number | null }} TradeSnapshot
+ * A saved line with plain card data captured at completion.
+ */
+
+/**
+ * @typedef {Object} TradeRecord
+ * @property {string} id Trade document ID.
+ * @property {TradeSnapshot[]} given Outgoing copies at completion.
+ * @property {TradeSnapshot[]} received Incoming copies at completion.
+ * @property {Timestamp|null} completedAt Server timestamp, or null while the server value is pending.
+ * @property {Timestamp|null} createdAt Server timestamp when the record was written.
+ * @property {'USD'} currency Currency of the saved prices.
+ */
+
 export class TradeConflictError extends Error {}
 
 function isDocumentId(value) {
   return typeof value === 'string' && value.trim() !== '' && !value.includes('/')
 }
 
+/**
+ * @param {Card} card Printing to snapshot.
+ * @param {TradeLineDetails} details Copies and price to record.
+ * @returns {TradeSnapshot}
+ */
 function makeSnapshot(card, { quantity, condition, finish, unitValueMinor = null }) {
   if (unitValueMinor !== null && (!Number.isSafeInteger(unitValueMinor) || unitValueMinor < 0)) {
     throw new TypeError('Trade prices must be nonnegative cents or null.')
@@ -31,7 +77,16 @@ function makeSnapshot(card, { quantity, condition, finish, unitValueMinor = null
   }
 }
 
-/** Records a trade and applies its inventory changes in one transaction. */
+/**
+ * Saves a completed trade and applies its inventory changes in one transaction.
+ * Retrying the same confirmation with the same ID returns that ID if the trade already exists.
+ * @param {string} userId Firebase Authentication UID.
+ * @param {string} tradeId Client-generated ID for this confirmation.
+ * @param {TradeCompletion} trade Selections with at least one line on each side.
+ * @returns {Promise<string>} Saved trade document ID.
+ * @throws {TypeError} If the IDs, selections, quantities, or prices are invalid.
+ * @throws {TradeConflictError} If current inventory can no longer fulfill an outgoing line.
+ */
 export async function completeTrade(userId, tradeId, { giving, receiving }) {
   if (!isDocumentId(userId) || !isDocumentId(tradeId)) {
     throw new TypeError('Valid user and trade IDs are required.')
@@ -158,6 +213,7 @@ export async function completeTrade(userId, tradeId, { giving, receiving }) {
 /**
  * Loads the signed-in user's completed trades, most recent first.
  * @param {string} userId Firebase Authentication UID.
+ * @returns {Promise<TradeRecord[]>} Saved trade snapshots with their document IDs.
  */
 export async function getTradeHistory(userId) {
   if (!isDocumentId(userId)) {
@@ -168,7 +224,7 @@ export async function getTradeHistory(userId) {
   const snapshot = await getDocs(query(trades, orderBy('completedAt', 'desc')))
 
   return snapshot.docs.map((document) => ({
-    ...document.data(),
+    .../** @type {Omit<TradeRecord, 'id'>} */ (document.data()),
     id: document.id,
   }))
 }

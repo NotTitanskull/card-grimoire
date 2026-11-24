@@ -40,8 +40,8 @@ const emit = defineEmits(['click'])
   z-index: 90;
   right: calc(1rem + env(safe-area-inset-right, 0px));
   bottom: var(--mobile-nav-clearance);
-  width: 3.5rem;
-  height: 3.5rem;
+  width: 3rem;
+  height: 3rem;
 }
 
 @media (min-width: 768px) {

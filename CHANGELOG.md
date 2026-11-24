@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated My Collection to match the app's panel styles, with printing and copy totals, clearable search, and loading placeholders that match the card rows.
+- Reduced the size of the shared floating add button on mobile and styled the full-width Finish selector to match Condition and Quantity.
+- Turned Trade's Compare and History tabs into a segmented switch with a flush center seam on hover and selection.
+- Extracted the Giving picker and shared pricing status into components. Trade comparison and review now share pricing feedback, and Giving and Receiving are visually distinct across comparison, review, and history.
+- Consolidated the Quasar palette and shared color values in one Sass theme and split dialog and select-menu styles into separate partials.
+- Documented trade completion inputs, retry and conflict behavior, saved trade records, and how zero or missing USD prices affect totals. Shared the JSDoc types with confirmation and history.
 - Polished card actions, binder dialogs, and the trade picker and review with consistent spacing and clearer controls. The trade picker keeps search and Done visible while results scroll.
 - Reused a shared dialog frame across card forms, deletion, and completed trades. Collection and receiving forms align condition and quantity when space allows.
 - Updated entry deletion to preview the exact printing and show how many copies will be removed.

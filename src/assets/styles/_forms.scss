@@ -16,7 +16,7 @@
 
     p {
       margin: 0.25rem 0 0;
-      color: var(--dialog-muted, #53647c);
+      color: var(--dialog-muted, var(--text-muted));
     }
   }
 

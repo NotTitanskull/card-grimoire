@@ -6,8 +6,7 @@ import { copiesFromBinder } from './useTradeDraft.js'
 /** @typedef {import('../models/Card.js').Card} Card */
 /** @typedef {{ card: Card, condition: string, finish: string, quantity: number }} ReceivingLine */
 /** @typedef {{ giving: readonly TradeDraftLine[], receiving: readonly ReceivingLine[] }} TradeDraft */
-/** @typedef {{ unitValueMinor: number | null }} RecordedPrice */
-/** @typedef {{ id: string, giving: (TradeDraftLine & RecordedPrice & { binderQuantity: number })[], receiving: (ReceivingLine & RecordedPrice)[] }} TradeAttempt */
+/** @typedef {import('../services/trades.js').TradeCompletion & { id: string }} TradeAttempt */
 
 /**
  * Captures a trade at confirmation and preserves it across retries.

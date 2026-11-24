@@ -143,19 +143,29 @@ function submitEntry() {
         />
       </div>
 
-      <fieldset v-if="card.finishes.length > 1" class="q-pa-sm rounded-borders finish-options">
-        <legend class="q-px-xs">Finish</legend>
-        <div class="row q-col-gutter-sm">
-          <q-radio
-            v-for="option in card.finishes"
-            :key="option"
-            v-model="finish"
-            :val="option"
-            :label="finishLabels[option] ?? option"
-            :disable="saving"
-          />
-        </div>
-      </fieldset>
+      <q-field
+        v-if="card.finishes.length > 1"
+        tag="div"
+        label="Finish"
+        outlined
+        stack-label
+        hide-bottom-space
+        :disable="saving"
+      >
+        <template #control>
+          <div class="finish-options" role="radiogroup" aria-label="Finish">
+            <q-radio
+              v-for="option in card.finishes"
+              :key="option"
+              v-model="finish"
+              :val="option"
+              :label="finishLabels[option] ?? option"
+              :disable="saving"
+              dense
+            />
+          </div>
+        </template>
+      </q-field>
       <p v-else class="q-mb-none">Finish: {{ finishLabels[finish] ?? finish }}</p>
     </div>
 
@@ -199,7 +209,12 @@ function submitEntry() {
 
 <style scoped>
 .finish-options {
-  min-width: 0;
-  border: 1px solid var(--surface-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1rem;
+}
+
+.finish-options .q-radio {
+  min-height: 1.5rem;
 }
 </style>

@@ -1,9 +1,12 @@
 <script setup>
+import TradePriceStatus from './TradePriceStatus.vue'
+
 const open = defineModel({ type: Boolean, default: false })
 
 defineProps({
   sides: { type: Array, required: true },
   comparison: { type: String, required: true },
+  pricingWarning: { type: Boolean, default: false },
   saving: { type: Boolean, default: false },
   retryRequired: { type: Boolean, default: false },
   saveError: { type: String, default: '' },
@@ -27,8 +30,13 @@ const emit = defineEmits(['confirm'])
       </q-card-section>
 
       <q-card-section class="grimoire-dialog__body trade-review-body">
-        <section v-for="side in sides" :key="side.label" class="trade-review-side">
-          <h3 class="text-subtitle1 text-weight-bold q-ma-none">{{ side.label }}</h3>
+        <section
+          v-for="side in sides"
+          :key="side.label"
+          class="trade-review-side"
+          :class="{ 'trade-review-side--receiving': side.direction === 'receiving' }"
+        >
+          <h3 class="trade-review-side-title">{{ side.label }}</h3>
 
           <q-list separator>
             <q-item v-for="line in side.lines" :key="line.id" class="q-px-none">
@@ -51,7 +59,7 @@ const emit = defineEmits(['confirm'])
         </section>
 
         <div class="trade-review-comparison">
-          <p class="q-ma-none text-weight-medium" role="status">{{ comparison }}</p>
+          <TradePriceStatus :message="comparison" :warning="pricingWarning" />
           <p class="grimoire-dialog__subtitle">
             Scryfall market estimates in USD, before condition adjustments.
           </p>
@@ -100,6 +108,22 @@ const emit = defineEmits(['confirm'])
 
 .trade-review-side {
   border: 1px solid var(--dialog-line);
+}
+
+.trade-review-side-title {
+  margin: 0;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.375rem;
+  background: var(--dialog-tint);
+  color: var(--q-primary);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.trade-review-side--receiving .trade-review-side-title {
+  background: var(--secondary-surface);
+  color: var(--q-secondary);
 }
 
 .trade-review-comparison {

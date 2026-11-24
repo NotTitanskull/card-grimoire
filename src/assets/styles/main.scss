@@ -1,3 +1,11 @@
 @use 'theme';
 @use 'forms';
-@use 'menus';
+@use 'dialogs';
+@use 'select-options';
+
+:root {
+  --surface-border: #{theme.$surface-border};
+  --surface-muted: #{theme.$surface-muted};
+  --text-muted: #{theme.$text-muted};
+  --secondary-surface: color-mix(in srgb, var(--q-secondary) 8%, white);
+}

@@ -7,8 +7,10 @@ import { useTradeConfirmation } from '../composables/useTradeConfirmation.js'
 import { copiesFromBinder, useTradeDraft } from '../composables/useTradeDraft.js'
 import { useTradePrices } from '../composables/useTradePrices.js'
 import ReceivingCardDialog from '../components/trade/ReceivingCardDialog.vue'
+import TradePriceStatus from '../components/trade/TradePriceStatus.vue'
 import TradeReviewDialog from '../components/trade/TradeReviewDialog.vue'
 import TradeHistory from '../components/trade/TradeHistory.vue'
+import TradeGivingPicker from '../components/trade/TradeGivingPicker.vue'
 
 /** @typedef {import('../composables/useTradeDraft.js').TradeOption} TradeOption */
 
@@ -35,7 +37,6 @@ const reviewOpen = ref(false)
 const activeTab = ref('compare')
 const tradeSaved = ref(false)
 const receivingError = ref('')
-const search = ref('')
 const incomingPrintings = computed(() =>
   receiving.value.map(({ card, finish, quantity }) => ({
     printingId: card.scryfallId,
@@ -62,19 +63,31 @@ const {
 
 const usd = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' })
 const comparison = computed(() => {
-  if (pricingLoading.value) return 'Loading market prices…'
-  if (pricingError.value) return pricingError.value
-  if (!giving.value.length || !receiving.value.length) return 'Add cards to both sides to compare.'
+  if (pricingLoading.value) return { message: 'Loading market prices…', warning: false }
+  if (pricingError.value) return { message: pricingError.value, warning: true }
+  if (!giving.value.length || !receiving.value.length) {
+    return { message: 'Add cards to both sides to compare.', warning: false }
+  }
 
   const difference = differenceMinor.value
   if (givingEstimate.value.missing || receivingEstimate.value.missing) {
-    return 'Value difference unavailable because some prices are missing.'
+    return {
+      message: 'Some market prices are missing, so the difference is unavailable.',
+      warning: true,
+    }
   }
-  if (difference === null) return 'Value difference is too large to display.'
-  if (difference === 0) return 'Both sides have the same estimated value.'
+  if (difference === null) {
+    return { message: 'Value difference is too large to display.', warning: true }
+  }
+  if (difference === 0) {
+    return { message: 'Both sides have the same estimated value.', warning: false }
+  }
 
   const side = difference > 0 ? 'Receiving' : 'Giving'
-  return `${side} is worth ${usd.format(Math.abs(difference) / 100)} more.`
+  return {
+    message: `${side} is worth ${usd.format(Math.abs(difference) / 100)} more.`,
+    warning: false,
+  }
 })
 
 function formatUnitPrice(printingId, finish) {
@@ -93,6 +106,7 @@ function formatEstimate({ totalMinor, missing }, lineCount) {
 
 const reviewSides = computed(() => [
   {
+    direction: 'giving',
     label: 'You give',
     lines: giving.value.map((line) => ({
       ...line,
@@ -101,6 +115,7 @@ const reviewSides = computed(() => [
     total: formatEstimate(givingEstimate.value, giving.value.length),
   },
   {
+    direction: 'receiving',
     label: 'You receive',
     lines: receiving.value.map(({ id, card, condition, finish, quantity }) => ({
       id,
@@ -112,14 +127,9 @@ const reviewSides = computed(() => [
   },
 ])
 
-const matchingCards = computed(() => {
-  const query = search.value.trim().toLowerCase()
+const availableToGive = computed(() => {
   const selectedIds = new Set(giving.value.map(({ id }) => id))
-
-  return owned.value.filter((card) => {
-    const text = `${card.name} ${card.details} ${card.binderName ?? ''}`.toLowerCase()
-    return !selectedIds.has(card.id) && text.includes(query)
-  })
+  return owned.value.filter(({ id }) => !selectedIds.has(id))
 })
 
 /**
@@ -177,11 +187,6 @@ async function loadOwned() {
   } finally {
     if (authStore.user?.uid === userId) loading.value = false
   }
-}
-
-function openPicker() {
-  search.value = ''
-  pickerOpen.value = true
 }
 
 function handleReceiveCard({ card, details }) {
@@ -244,9 +249,10 @@ watch(
       no-caps
       aria-label="Trade views"
       class="trade-tabs q-mb-md"
+      :class="{ 'trade-tabs--history': activeTab === 'history' }"
     >
-      <q-tab name="compare" label="Compare" icon="swap_horiz" />
-      <q-tab name="history" label="History" icon="history" />
+      <q-tab name="compare" label="Compare" icon="swap_horiz" :ripple="false" />
+      <q-tab name="history" label="History" icon="history" :ripple="false" />
     </q-tabs>
 
     <template v-if="activeTab === 'compare'">
@@ -267,7 +273,7 @@ watch(
               label="Add card"
               aria-label="Add card from collection"
               :disable="loading || Boolean(loadError) || !owned.length"
-              @click="openPicker"
+              @click="pickerOpen = true"
             />
           </div>
 
@@ -342,7 +348,10 @@ watch(
           </div>
         </section>
 
-        <section class="trade-panel" aria-labelledby="trade-receiving-heading">
+        <section
+          class="trade-panel trade-panel--receiving"
+          aria-labelledby="trade-receiving-heading"
+        >
           <div class="trade-panel-header">
             <h2 id="trade-receiving-heading" class="text-h6 q-ma-none">
               You receive
@@ -410,7 +419,11 @@ watch(
         <h2 id="trade-comparison-heading" class="text-subtitle1 text-weight-bold q-ma-none">
           Value difference
         </h2>
-        <p class="q-mb-xs" role="status">{{ comparison }}</p>
+        <TradePriceStatus
+          class="q-mb-sm"
+          :message="comparison.message"
+          :warning="comparison.warning"
+        />
         <q-btn
           v-if="pricingError"
           flat
@@ -442,7 +455,8 @@ watch(
     <TradeReviewDialog
       v-model="reviewOpen"
       :sides="reviewSides"
-      :comparison="comparison"
+      :comparison="comparison.message"
+      :pricing-warning="comparison.warning"
       :saving="savingTrade"
       :retry-required="retryRequired"
       :save-error="tradeSaveError"
@@ -455,231 +469,101 @@ watch(
       @submit="handleReceiveCard"
     />
 
-    <q-dialog v-model="pickerOpen" aria-labelledby="trade-picker-title">
-      <q-card class="trade-picker grimoire-dialog grimoire-dialog--scroll grimoire-dialog-sized">
-        <q-card-section class="grimoire-dialog__header">
-          <q-icon name="collections_bookmark" class="grimoire-dialog__icon" aria-hidden="true" />
-          <h2 id="trade-picker-title" class="grimoire-dialog__title grimoire-dialog__heading">
-            Choose cards to give
-          </h2>
-          <q-btn
-            v-close-popup
-            flat
-            round
-            dense
-            icon="close"
-            class="grimoire-dialog__close"
-            aria-label="Close picker"
-          />
-        </q-card-section>
-        <q-card-section class="trade-picker-search">
-          <q-input
-            v-model="search"
-            outlined
-            dense
-            type="search"
-            aria-label="Search cards or binders"
-            placeholder="Search cards or binders"
-          >
-            <template #prepend><q-icon name="search" aria-hidden="true" /></template>
-          </q-input>
-        </q-card-section>
-        <q-card-section class="grimoire-dialog__body trade-picker-results">
-          <q-list v-if="matchingCards.length" class="trade-picker-list">
-            <q-item
-              v-for="card in matchingCards"
-              :key="JSON.stringify([card.id, card.binderId])"
-              class="trade-picker-row items-center"
-            >
-              <q-item-section avatar class="trade-picker-thumbnail">
-                <q-img
-                  v-if="card.imageUrl"
-                  :src="card.imageUrl"
-                  :ratio="5 / 7"
-                  alt=""
-                  loading="lazy"
-                />
-                <q-icon v-else name="style" aria-hidden="true" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label class="text-weight-bold">{{ card.name }}</q-item-label>
-                <q-item-label caption>{{ card.details }}</q-item-label>
-                <div class="trade-picker-metadata">
-                  <span class="trade-picker-source">
-                    <q-icon :name="card.binderName ? 'book' : 'style'" aria-hidden="true" />
-                    {{ card.binderName ?? 'Loose copies' }}
-                  </span>
-                  <span>{{ card.available }} available</span>
-                </div>
-                <q-item-label v-if="card.binderName && card.unassigned" caption>
-                  Uses loose copies first
-                </q-item-label>
-              </q-item-section>
-              <q-item-section side class="trade-picker-action">
-                <q-btn
-                  unelevated
-                  no-caps
-                  icon="add"
-                  class="trade-picker-add"
-                  label="Add"
-                  :aria-label="`Add ${card.name}, ${card.details}, from ${card.binderName ?? 'loose copies'}`"
-                  @click="addCard(card)"
-                />
-              </q-item-section>
-            </q-item>
-          </q-list>
-          <p v-else class="trade-picker-empty q-ma-none" role="status">
-            {{
-              search.trim()
-                ? 'No remaining cards match your search.'
-                : 'All eligible entries are in the draft.'
-            }}
-          </p>
-        </q-card-section>
-        <q-card-actions align="between" class="grimoire-dialog__footer">
-          <span class="trade-picker-count" aria-live="polite">
-            {{ totalCopies }} {{ totalCopies === 1 ? 'copy' : 'copies' }} selected
-          </span>
-          <q-btn v-close-popup unelevated no-caps color="primary" label="Done" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <TradeGivingPicker
+      v-model="pickerOpen"
+      :options="availableToGive"
+      :selected-copies="totalCopies"
+      @add="addCard"
+    />
   </section>
 </template>
 
 <style scoped>
 .trade-tabs {
-  width: fit-content;
-  padding: 0.25rem;
+  --switch-inset: 0.25rem;
+  --switch-outer-radius: 0.625rem;
+
+  isolation: isolate;
+  width: 16rem;
+  max-width: 100%;
+  padding: var(--switch-inset);
   border: 1px solid var(--surface-border);
   border-radius: 0.875rem;
+  background: var(--surface-muted);
+}
+
+.trade-tabs::before {
+  --thumb-start-radius: var(--switch-outer-radius);
+  --thumb-end-radius: 0;
+
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset-block: var(--switch-inset);
+  inset-inline-start: var(--switch-inset);
+  inline-size: calc(50% - var(--switch-inset));
+  border-start-start-radius: var(--thumb-start-radius);
+  border-end-start-radius: var(--thumb-start-radius);
+  border-start-end-radius: var(--thumb-end-radius);
+  border-end-end-radius: var(--thumb-end-radius);
   background: #fff;
+  box-shadow: 0 1px 2px #19263b14;
+  pointer-events: none;
+  transition: inset-inline-start 180ms ease;
+}
+
+.trade-tabs--history::before {
+  --thumb-start-radius: 0;
+  --thumb-end-radius: var(--switch-outer-radius);
+
+  inset-inline-start: 50%;
 }
 
 .trade-tabs :deep(.q-tab) {
-  min-height: 2.5rem;
-  border-radius: 0.625rem;
+  flex: 1 1 0;
+  min-height: 2.75rem;
 }
 
-.trade-tabs :deep(.q-tab--active) {
-  background: #e9efff;
+.trade-tabs :deep(.q-tab:first-child) {
+  border-start-start-radius: var(--switch-outer-radius);
+  border-end-start-radius: var(--switch-outer-radius);
+}
+
+.trade-tabs :deep(.q-tab:last-child) {
+  border-start-end-radius: var(--switch-outer-radius);
+  border-end-end-radius: var(--switch-outer-radius);
+}
+
+.trade-tabs :deep(.q-tab > .q-focus-helper) {
+  opacity: 0;
+}
+
+.trade-tabs :deep(.q-tab:focus-visible) {
+  outline: 2px solid var(--q-primary);
+  outline-offset: -2px;
 }
 
 .trade-tabs :deep(.q-tab__indicator) {
   display: none;
 }
 
+@media (any-hover: hover) {
+  .trade-tabs :deep(.q-tab--inactive:hover) {
+    background: color-mix(in srgb, var(--q-primary) 5%, transparent);
+    opacity: 1;
+  }
+}
+
 @media (max-width: 640px) {
   .trade-tabs {
     width: 100%;
   }
+}
 
+@media (prefers-reduced-motion: reduce) {
+  .trade-tabs::before,
   .trade-tabs :deep(.q-tab) {
-    flex: 1;
-  }
-}
-
-.trade-picker-search {
-  flex: 0 0 auto;
-  padding: 0.875rem 1.125rem 0.25rem;
-}
-
-.trade-picker-results {
-  padding-top: 0.625rem;
-}
-
-.trade-picker-list {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.trade-picker-row {
-  padding: 0.625rem;
-  border: 1px solid var(--dialog-line);
-  border-radius: 0.75rem;
-  overflow-wrap: anywhere;
-}
-
-.trade-picker-thumbnail {
-  width: 3rem;
-  min-width: 0;
-  padding-right: 0.625rem;
-}
-
-.trade-picker-thumbnail :deep(.q-img) {
-  border-radius: 0.25rem;
-}
-
-.trade-picker-thumbnail :deep(.q-icon) {
-  display: grid;
-  width: 100%;
-  height: 3rem;
-  place-items: center;
-  border-radius: 0.375rem;
-  background: var(--dialog-tint);
-  color: var(--q-primary);
-}
-
-.trade-picker-metadata {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 0.5rem;
-  margin-top: 0.375rem;
-  color: var(--dialog-muted);
-  font-size: 0.75rem;
-}
-
-.trade-picker-source {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.125rem 0.375rem;
-  border-radius: 0.375rem;
-  background: var(--dialog-tint);
-  color: var(--dialog-ink);
-}
-
-.trade-picker-action {
-  padding-left: 0.5rem;
-}
-
-.trade-picker-add {
-  min-height: 2.5rem;
-  padding-inline: 0.625rem;
-  border-radius: 0.625rem;
-  background: var(--dialog-accent);
-  color: var(--q-primary);
-  font-weight: 600;
-}
-
-.trade-picker-count,
-.trade-picker-empty {
-  color: var(--dialog-muted);
-  font-size: 0.875rem;
-}
-
-.trade-picker-empty {
-  padding: 0.875rem 0.625rem;
-  border: 1px dashed var(--dialog-line);
-  border-radius: 0.625rem;
-  text-align: center;
-}
-
-@media (max-width: 767.98px) {
-  .trade-picker-search {
-    padding-inline: 0.875rem;
-  }
-
-  .trade-picker-thumbnail {
-    width: 2.375rem;
-    padding-right: 0.5rem;
-  }
-}
-
-@media (max-width: 360px) {
-  .trade-picker-thumbnail {
-    display: none;
+    transition: none;
   }
 }
 
@@ -698,8 +582,16 @@ watch(
 }
 
 .trade-panel {
+  --trade-direction: var(--q-primary);
+  --trade-header-background: color-mix(in srgb, var(--q-primary) 7%, white);
+
   display: flex;
   flex-direction: column;
+}
+
+.trade-panel--receiving {
+  --trade-direction: var(--q-secondary);
+  --trade-header-background: var(--secondary-surface);
 }
 
 .trade-panel-header,
@@ -713,6 +605,16 @@ watch(
 
 .trade-panel-header {
   margin-bottom: 0.75rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+  background: var(--trade-header-background);
+}
+
+.trade-panel-header h2 {
+  color: var(--trade-direction);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .trade-copy-count {
@@ -733,6 +635,10 @@ watch(
   margin-top: auto;
   padding-top: 0.75rem;
   border-top: 1px solid var(--surface-border);
+}
+
+.trade-panel-total strong {
+  color: var(--trade-direction);
 }
 
 .trade-panel :deep(.q-item) {

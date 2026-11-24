@@ -19,10 +19,21 @@ export function useTradePrices(giving, receiving) {
     return JSON.stringify([...ids].sort())
   })
 
+  /**
+   * Looks up the market price per copy for the selected printing and finish.
+   * @param {string} printingId Scryfall printing ID.
+   * @param {string} finish Nonfoil, foil, or etched.
+   * @returns {number|null} USD cents, including zero, or null when unavailable.
+   */
   function unitPriceMinor(printingId, finish) {
     return prices.value.get(printingId)?.[finish] ?? null
   }
 
+  /**
+   * Totals the priced copies and counts draft lines with missing prices.
+   * @param {readonly PricedLine[]} lines One side of the draft.
+   * @returns {{ totalMinor: number | null, missing: number }} Subtotal in USD cents and number of unpriced lines. The subtotal is null if it exceeds the safe integer range.
+   */
   function summarize(lines) {
     let totalMinor = 0
     let missing = 0
@@ -38,6 +49,8 @@ export function useTradePrices(giving, receiving) {
 
   const givingEstimate = computed(() => summarize(giving.value))
   const receivingEstimate = computed(() => summarize(receiving.value))
+
+  /** Receiving minus giving in USD cents, or null until both sides have complete, usable totals. */
   const differenceMinor = computed(() => {
     const outgoing = givingEstimate.value
     const incoming = receivingEstimate.value

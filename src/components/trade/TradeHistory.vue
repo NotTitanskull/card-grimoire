@@ -3,13 +3,17 @@ import { onMounted, ref } from 'vue'
 import DialogFrame from '../layout/DialogFrame.vue'
 import { getTradeHistory } from '../../services/trades.js'
 
+/** @typedef {import('../../services/trades.js').TradeRecord} TradeRecord */
+
 const props = defineProps({
   userId: { type: String, required: true },
 })
 
+/** @type {import('vue').Ref<TradeRecord[]>} */
 const trades = ref([])
 const loading = ref(true)
 const loadError = ref('')
+/** @type {import('vue').Ref<TradeRecord|null>} */
 const selectedTrade = ref(null)
 const detailsOpen = ref(false)
 
@@ -44,6 +48,7 @@ function copyLabel(lines) {
   return `${count} ${count === 1 ? 'copy' : 'copies'}`
 }
 
+/** @param {TradeRecord} trade */
 function tradeSides(trade) {
   return [
     { label: 'Gave', lines: trade.given, icon: 'north_east', direction: 'given' },
@@ -51,6 +56,7 @@ function tradeSides(trade) {
   ]
 }
 
+/** @param {TradeRecord} trade */
 function openTrade(trade) {
   selectedTrade.value = trade
   detailsOpen.value = true
@@ -196,7 +202,7 @@ onMounted(loadHistory)
   justify-items: center;
   gap: 0.625rem;
   padding: 2rem 1rem;
-  color: #53647c;
+  color: var(--text-muted);
 
   p {
     margin: 0;
@@ -236,7 +242,7 @@ onMounted(loadHistory)
 .trade-history-date > span,
 .trade-history-summary-label,
 .trade-history-more {
-  color: #53647c;
+  color: var(--text-muted);
   font-size: 0.8125rem;
 }
 
@@ -255,6 +261,7 @@ onMounted(loadHistory)
   }
 }
 
+.trade-history-summary--received .trade-history-summary-label,
 .trade-history-summary--received .q-icon {
   color: var(--q-secondary);
 }
@@ -357,7 +364,12 @@ onMounted(loadHistory)
   }
 }
 
-.completed-trade-side--received .completed-trade-side-header .q-icon {
+.completed-trade-side--received .completed-trade-side-header {
+  background: var(--secondary-surface);
+}
+
+.completed-trade-side--received .completed-trade-side-header .q-icon,
+.completed-trade-side--received .completed-trade-side-header h3 {
   color: var(--q-secondary);
 }
 
